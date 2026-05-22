@@ -37,10 +37,31 @@ function normalizeTags(tags) {
   return [];
 }
 
+function normalizeUrl(rawUrl) {
+  const value = (rawUrl || "").trim();
+  if (!value) {
+    return "";
+  }
+
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value)) {
+    return value;
+  }
+
+  if (
+    value.startsWith("localhost:") ||
+    value.startsWith("127.0.0.1:") ||
+    value.startsWith("[::1]") ||
+    /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/|$)/.test(value)
+  ) {
+    return `http://${value}`;
+  }
+
+  return `https://${value}`;
+}
+
 function buildSearchText(link, groupName = "") {
   return [
     link.title,
-    link.description,
     link.notes,
     link.url,
     groupName,
@@ -99,7 +120,7 @@ export async function openDb() {
           db.createObjectStore(META_STORE, { keyPath: "key" });
         }
 
-        if (request.oldVersion < 2) {
+        if (request.oldVersion > 0 && request.oldVersion < 2) {
           const collectionsStore = transaction.objectStore(COLLECTIONS_STORE);
           const groupsStore = transaction.objectStore(GROUPS_STORE);
           const addCollectionRequest = collectionsStore.add({
@@ -220,6 +241,98 @@ export async function getAllLinks() {
   return links.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+export async function getAllTags() {
+  const links = await getAllLinks();
+  const tagCounts = new Map();
+
+  links.forEach((link) => {
+    normalizeTags(link.tags).forEach((tag) => {
+      const key = tag.toLowerCase();
+      const current = tagCounts.get(key);
+      if (current) {
+        current.count += 1;
+      } else {
+        tagCounts.set(key, { tag, count: 1 });
+      }
+    });
+  });
+
+  return Array.from(tagCounts.values()).sort((a, b) => {
+    if (b.count !== a.count) {
+      return b.count - a.count;
+    }
+
+    return a.tag.localeCompare(b.tag);
+  });
+}
+
+export async function exportBackupData() {
+  const [collections, groups, links] = await Promise.all([
+    getAllCollections(),
+    getAllGroups(),
+    getAllLinks()
+  ]);
+
+  return {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    data: {
+      collections,
+      groups,
+      links: links.map((link) => ({
+        ...link,
+        tags: normalizeTags(link.tags),
+        notesFormat: link.notesFormat || "plain"
+      }))
+    }
+  };
+}
+
+export async function importBackupData(backup) {
+  const payload = backup?.data || backup;
+  const collections = Array.isArray(payload?.collections) ? payload.collections : [];
+  const groups = Array.isArray(payload?.groups) ? payload.groups : [];
+  const links = Array.isArray(payload?.links) ? payload.links : [];
+
+  const db = await openDb();
+  const transaction = db.transaction(
+    [COLLECTIONS_STORE, GROUPS_STORE, LINKS_STORE, META_STORE],
+    "readwrite"
+  );
+  const collectionsStore = transaction.objectStore(COLLECTIONS_STORE);
+  const groupsStore = transaction.objectStore(GROUPS_STORE);
+  const linksStore = transaction.objectStore(LINKS_STORE);
+  const metaStore = transaction.objectStore(META_STORE);
+
+  await Promise.all([
+    requestNoResult(collectionsStore.clear()),
+    requestNoResult(groupsStore.clear()),
+    requestNoResult(linksStore.clear())
+  ]);
+
+  collections.forEach((collection) => {
+    collectionsStore.put(collection);
+  });
+
+  groups.forEach((group) => {
+    groupsStore.put(group);
+  });
+
+  links.forEach((link) => {
+    const normalized = {
+      ...link,
+      url: normalizeUrl(link.url),
+      tags: normalizeTags(link.tags),
+      notesFormat: link.notesFormat || "plain"
+    };
+    normalized.searchText = buildSearchText(normalized, "");
+    linksStore.put(normalized);
+  });
+
+  metaStore.put({ key: "lastImportedAt", value: Date.now() });
+  await transactionDone(transaction);
+}
+
 export async function getSnapshot() {
   const [collections, groups, links] = await Promise.all([
     getAllCollections(),
@@ -231,6 +344,7 @@ export async function getSnapshot() {
   const hydratedLinks = links.map((link) => ({
     ...link,
     tags: normalizeTags(link.tags),
+    notesFormat: link.notesFormat || "plain",
     groupName: groupMap.get(link.groupId)?.name || "Ungrouped"
   }));
 
@@ -410,10 +524,10 @@ export async function saveLink(link) {
 
   const now = Date.now();
   const normalized = {
-    url: link.url.trim(),
+    url: normalizeUrl(link.url),
     title: link.title.trim(),
-    description: (link.description || "").trim(),
     notes: (link.notes || "").trim(),
+    notesFormat: link.notesFormat || "plain",
     tags: normalizeTags(link.tags),
     favicon: link.favicon || "",
     groupId: group.id,
@@ -461,12 +575,12 @@ export async function importLinks(links, groupId) {
   const groupsStore = transaction.objectStore(GROUPS_STORE);
 
   links.forEach((link) => {
-    const normalized = {
-      url: link.url.trim(),
-      title: (link.title || link.url).trim(),
-      description: (link.description || "").trim(),
-      notes: (link.notes || "").trim(),
-      tags: normalizeTags(link.tags),
+      const normalized = {
+        url: normalizeUrl(link.url),
+        title: (link.title || link.url).trim(),
+        notes: (link.notes || "").trim(),
+        notesFormat: link.notesFormat || "plain",
+        tags: normalizeTags(link.tags),
       favicon: link.favicon || "",
       groupId: group.id,
       pinned: Boolean(link.pinned),

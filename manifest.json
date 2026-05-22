@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Session Canvas",
   "version": "1.0.0",
-  "description": "A simplified Session Buddy-style link manager with groups, notes, tags, and IndexedDB storage.",
+  "description": "A simplified Session Buddy-style link manager with collections, groups, notes, tags, and IndexedDB storage.",
   "permissions": [
     "tabs"
   ],

@@ -25,6 +25,8 @@
         </label>
 
         <div class="topbar-actions">
+          <button id="importBackupBtn" class="ghost-button">Import backup</button>
+          <button id="exportBackupBtn" class="ghost-button">Export backup</button>
           <button id="saveCurrentTabBtn" class="ghost-button">Save current tab</button>
           <button id="importWindowBtn" class="ghost-button">Import window</button>
           <button id="addLinkBtn" class="primary-button">New link</button>
@@ -70,6 +72,10 @@
             </div>
           </section>
 
+          <section class="tag-filter-bar">
+            <div id="tagFilterChips" class="tag-filter-chips"></div>
+          </section>
+
           <section id="emptyState" class="empty-state hidden">
             <h3>No groups yet</h3>
             <p>Create a group in this collection, then save links with names, tags, notes, and URLs.</p>
@@ -99,12 +105,7 @@
 
         <label class="field">
           <span>URL</span>
-          <input id="linkUrl" name="url" type="url" required />
-        </label>
-
-        <label class="field">
-          <span>Short description</span>
-          <input id="linkDescription" name="description" maxlength="140" />
+          <input id="linkUrl" name="url" type="text" inputmode="url" placeholder="example.com" required />
         </label>
 
         <label class="field">
@@ -113,9 +114,20 @@
         </label>
 
         <label class="field">
-          <span>Tags</span>
-          <input id="linkTags" name="tags" placeholder="work, design, reference" />
+          <span>Notes format</span>
+          <select id="linkNotesFormat" name="notesFormat">
+            <option value="plain">Plain text</option>
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+          </select>
         </label>
+
+        <label class="field">
+          <span>Tags</span>
+          <input id="linkTags" name="tags" list="tagSuggestions" placeholder="work, design, reference" />
+        </label>
+
+        <div id="existingTagSuggestions" class="existing-tag-suggestions"></div>
 
         <label class="field">
           <span>Group</span>
@@ -133,6 +145,8 @@
         </div>
       </form>
     </dialog>
+
+    <datalist id="tagSuggestions"></datalist>
 
     <dialog id="collectionDialog" class="modal">
       <form id="collectionForm" class="modal-form compact" method="dialog">
@@ -225,14 +239,13 @@
         <div class="link-primary">
           <img class="link-favicon" alt="" />
           <div class="link-copy">
-            <div class="link-title-row">
+            <div class="link-main-row">
               <h4 class="link-title"></h4>
+              <a class="link-url" target="_blank" rel="noreferrer"></a>
+              <div class="tag-row"></div>
               <span class="pin-pill hidden">Pinned</span>
             </div>
-            <p class="link-description"></p>
-            <a class="link-url" target="_blank" rel="noreferrer"></a>
-            <p class="link-notes hidden"></p>
-            <div class="tag-row"></div>
+            <div class="link-notes hidden"></div>
           </div>
         </div>
         <div class="link-actions">
@@ -242,6 +255,8 @@
         </div>
       </article>
     </template>
+
+    <input id="importBackupInput" type="file" accept="application/json,.json" class="hidden" />
 
     <script type="module" src="dashboard.js"></script>
   </body>

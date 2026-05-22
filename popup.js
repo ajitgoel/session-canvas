@@ -1,10 +1,9 @@
-import { ensureDefaultData, getAllGroups, importLinks, saveLink } from "./db.js";
+import { ensureDefaultData, getSnapshot, importLinks, saveLink } from "./db.js";
 
 const els = {
   popupFavicon: document.querySelector("#popupFavicon"),
   popupTitle: document.querySelector("#popupTitle"),
   popupUrl: document.querySelector("#popupUrl"),
-  popupDescription: document.querySelector("#popupDescription"),
   popupNotes: document.querySelector("#popupNotes"),
   popupTags: document.querySelector("#popupTags"),
   popupGroup: document.querySelector("#popupGroup"),
@@ -17,14 +16,16 @@ let activeTab;
 
 async function loadGroups() {
   await ensureDefaultData();
-  const groups = await getAllGroups();
+  const collections = await getSnapshot();
   els.popupGroup.innerHTML = "";
-  groups.forEach((group, index) => {
-    const option = document.createElement("option");
-    option.value = String(group.id);
-    option.textContent = group.name;
-    option.selected = index === 0;
-    els.popupGroup.append(option);
+  collections.forEach((collection) => {
+    collection.groups.forEach((group, index) => {
+      const option = document.createElement("option");
+      option.value = String(group.id);
+      option.textContent = `${collection.name} / ${group.name}`;
+      option.selected = els.popupGroup.options.length === 0 && index === 0;
+      els.popupGroup.append(option);
+    });
   });
 }
 
@@ -46,7 +47,6 @@ async function saveActiveTab() {
   await saveLink({
     title: activeTab.title || activeTab.url,
     url: activeTab.url,
-    description: els.popupDescription.value,
     notes: els.popupNotes.value,
     tags: els.popupTags.value,
     groupId: Number(els.popupGroup.value),

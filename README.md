@@ -3,7 +3,6 @@
 A Chrome extension inspired by Session Buddy, rebuilt as a simplified personal link manager with:
 
 - URL storage
-- Short descriptions
 - Notes
 - Tags
 - Groups with collapsible sections
