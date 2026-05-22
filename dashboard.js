@@ -7,6 +7,7 @@ import {
   ensureDefaultData,
   exportBackupData,
   getAllTags,
+  getDriveSyncSettings,
   getSnapshot,
   getVaultStatus,
   importBackupData,
@@ -16,9 +17,18 @@ import {
   setGroupCollapsed,
   setupPassphrase,
   unlockVault,
+  updateDriveSyncSettings,
   updateCollection,
   updateGroup
 } from "./db.js";
+import {
+  connectGoogleDrive,
+  downloadDriveBackup,
+  findDriveBackupFile,
+  getGoogleDriveRedirectUri,
+  refreshGoogleAccessToken,
+  uploadDriveBackup
+} from "./drive-sync.js";
 
 const state = {
   collections: [],
@@ -29,7 +39,12 @@ const state = {
   currentTabCount: 0,
   pendingCompose: null,
   vaultConfigured: false,
-  vaultUnlocked: false
+  vaultUnlocked: false,
+  activeView: "collections",
+  driveSettings: null,
+  syncInFlight: false,
+  hasAutoSyncedThisUnlock: false,
+  pendingConflictResolver: null
 };
 
 const els = {
@@ -47,6 +62,10 @@ const els = {
   securityMessage: document.querySelector("#securityMessage"),
   securityForm: document.querySelector("#securityForm"),
   securityPassphrase: document.querySelector("#securityPassphrase"),
+  collectionsTabBtn: document.querySelector("#collectionsTabBtn"),
+  settingsTabBtn: document.querySelector("#settingsTabBtn"),
+  collectionsView: document.querySelector("#collectionsView"),
+  settingsView: document.querySelector("#settingsView"),
   heroBadge: document.querySelector("#heroBadge"),
   heroTitle: document.querySelector("#heroTitle"),
   heroMeta: document.querySelector("#heroMeta"),
@@ -89,7 +108,25 @@ const els = {
   deleteGroupBtn: document.querySelector("#deleteGroupBtn"),
   groupSectionTemplate: document.querySelector("#groupSectionTemplate"),
   linkCardTemplate: document.querySelector("#linkCardTemplate"),
-  importBackupInput: document.querySelector("#importBackupInput")
+  importBackupInput: document.querySelector("#importBackupInput"),
+  settingsExportBackupBtn: document.querySelector("#settingsExportBackupBtn"),
+  settingsImportBackupBtn: document.querySelector("#settingsImportBackupBtn"),
+  googleClientIdInput: document.querySelector("#googleClientIdInput"),
+  googleRedirectUri: document.querySelector("#googleRedirectUri"),
+  googleAutoSyncInput: document.querySelector("#googleAutoSyncInput"),
+  connectDriveBtn: document.querySelector("#connectDriveBtn"),
+  disconnectDriveBtn: document.querySelector("#disconnectDriveBtn"),
+  syncNowBtn: document.querySelector("#syncNowBtn"),
+  driveConnectionStatus: document.querySelector("#driveConnectionStatus"),
+  driveLastSyncAt: document.querySelector("#driveLastSyncAt"),
+  driveLastSyncStatus: document.querySelector("#driveLastSyncStatus"),
+  syncConflictDialog: document.querySelector("#syncConflictDialog"),
+  syncConflictMessage: document.querySelector("#syncConflictMessage"),
+  syncConflictLocal: document.querySelector("#syncConflictLocal"),
+  syncConflictRemote: document.querySelector("#syncConflictRemote"),
+  cancelConflictBtn: document.querySelector("#cancelConflictBtn"),
+  useRemoteConflictBtn: document.querySelector("#useRemoteConflictBtn"),
+  keepLocalConflictBtn: document.querySelector("#keepLocalConflictBtn")
 };
 
 let draftTags = [];
@@ -114,6 +151,14 @@ function relativeTime(date) {
   }
 
   return `Updated ${new Date(date).toLocaleDateString()}`;
+}
+
+function formatLastSync(date) {
+  if (!date) {
+    return "Never";
+  }
+
+  return new Date(date).toLocaleString();
 }
 
 function matchesSearch(parts, searchTerm) {
@@ -217,10 +262,20 @@ function setVaultUiState() {
     els.newGroupBtn,
     els.editCollectionBtn,
     els.openGroupBtn,
-    els.searchInput
+    els.searchInput,
+    els.collectionsTabBtn,
+    els.settingsTabBtn,
+    els.settingsExportBackupBtn,
+    els.settingsImportBackupBtn,
+    els.googleAutoSyncInput,
+    els.connectDriveBtn,
+    els.disconnectDriveBtn,
+    els.syncNowBtn
   ].forEach((element) => {
     element.disabled = locked;
   });
+
+  els.googleClientIdInput.disabled = locked;
 
   if (!state.vaultConfigured) {
     els.securityTitle.textContent = "Create your passphrase";
@@ -231,6 +286,39 @@ function setVaultUiState() {
     els.securityMessage.textContent =
       "Enter your passphrase to decrypt your saved collections, groups, links, tags, and notes.";
   }
+}
+
+function renderView() {
+  const showingSettings = state.activeView === "settings";
+  els.collectionsTabBtn.classList.toggle("active", !showingSettings);
+  els.settingsTabBtn.classList.toggle("active", showingSettings);
+  els.collectionsView.classList.toggle("hidden", showingSettings);
+  els.settingsView.classList.toggle("hidden", !showingSettings);
+}
+
+function renderDriveSettings() {
+  const settings = state.driveSettings || {
+    clientId: "",
+    refreshToken: "",
+    fileId: "",
+    autoSync: false,
+    lastSyncedVaultUpdatedAt: 0,
+    lastSyncAt: 0,
+    lastSyncStatus: "Not connected"
+  };
+  const connected = Boolean(settings.refreshToken);
+
+  els.googleRedirectUri.textContent = getGoogleDriveRedirectUri();
+  if (document.activeElement !== els.googleClientIdInput) {
+    els.googleClientIdInput.value = settings.clientId || "";
+  }
+  els.googleAutoSyncInput.checked = Boolean(settings.autoSync);
+  els.driveConnectionStatus.textContent = connected ? "Connected" : "Not connected";
+  els.driveLastSyncAt.textContent = formatLastSync(settings.lastSyncAt);
+  els.driveLastSyncStatus.textContent = settings.lastSyncStatus || "Not connected";
+  els.connectDriveBtn.textContent = connected ? "Reconnect Google Drive" : "Connect Google Drive";
+  els.disconnectDriveBtn.disabled = !connected || !state.vaultUnlocked || state.syncInFlight;
+  els.syncNowBtn.disabled = !connected || !state.vaultUnlocked || state.syncInFlight;
 }
 
 async function refreshCurrentTabCount() {
@@ -247,14 +335,21 @@ async function refreshData() {
   if (!state.vaultUnlocked) {
     state.collections = [];
     state.tags = [];
+    state.driveSettings = null;
+    state.hasAutoSyncedThisUnlock = false;
     render();
     return;
   }
 
   await ensureDefaultData();
-  const [collections, tags] = await Promise.all([getSnapshot(), getAllTags()]);
+  const [collections, tags, driveSettings] = await Promise.all([
+    getSnapshot(),
+    getAllTags(),
+    getDriveSyncSettings()
+  ]);
   state.collections = collections;
   state.tags = tags;
+  state.driveSettings = driveSettings;
 
   if (
     !state.activeCollectionId ||
@@ -271,6 +366,11 @@ async function refreshData() {
   }
 
   render();
+
+  if (state.driveSettings.autoSync && !state.hasAutoSyncedThisUnlock) {
+    state.hasAutoSyncedThisUnlock = true;
+    await performDriveSync({ reason: "Auto sync on unlock" });
+  }
 
   if (state.pendingCompose) {
     const compose = state.pendingCompose;
@@ -493,6 +593,7 @@ function createLinkCard(link) {
   card.querySelector('[data-action="delete"]').addEventListener("click", async () => {
     await deleteLink(link.id);
     await refreshData();
+    await syncIfEnabled("Link deleted");
   });
 
   return fragment;
@@ -562,6 +663,7 @@ function renderGroups() {
       }
       await deleteGroup(group.id);
       await refreshData();
+      await syncIfEnabled("Group deleted");
     });
 
     actions.append(openBtn, editBtn, deleteBtn);
@@ -569,6 +671,7 @@ function renderGroups() {
     header.addEventListener("click", async () => {
       await setGroupCollapsed(group.id, !group.collapsed);
       await refreshData();
+      await syncIfEnabled("Group collapse updated");
     });
 
     visibleLinks.forEach((link) => linksContainer.append(createLinkCard(link)));
@@ -589,11 +692,13 @@ function render() {
 
   populateCollectionSelect();
   populateGroupSelect();
+  renderView();
   renderNav();
   renderHero();
   renderTagFilters();
   renderTagSuggestions();
   renderGroupSuggestions();
+  renderDriveSettings();
   renderSelectedTags();
   renderGroups();
 }
@@ -739,6 +844,7 @@ async function saveCurrentTabToGroup(groupId = null) {
   });
 
   await refreshData();
+  await syncIfEnabled("Current tab saved");
 }
 
 async function importCurrentWindow(groupId = null) {
@@ -760,6 +866,7 @@ async function importCurrentWindow(groupId = null) {
     defaultGroupId
   );
   await refreshData();
+  await syncIfEnabled("Window imported");
 }
 
 async function openVisibleLinks() {
@@ -787,7 +894,177 @@ async function exportBackup() {
   URL.revokeObjectURL(blobUrl);
 }
 
+async function updateDriveStatus(lastSyncStatus, extra = {}) {
+  state.driveSettings = await updateDriveSyncSettings({
+    lastSyncStatus,
+    ...extra
+  }, {
+    preserveVaultUpdatedAt: true
+  });
+  renderDriveSettings();
+}
+
+function promptSyncConflict({ localUpdatedAt, remoteUpdatedAt }) {
+  els.syncConflictMessage.textContent =
+    "Session Canvas found newer changes both on this computer and in Google Drive. Choose which encrypted vault should win.";
+  els.syncConflictLocal.textContent = formatLastSync(localUpdatedAt);
+  els.syncConflictRemote.textContent = formatLastSync(remoteUpdatedAt);
+  els.syncConflictDialog.showModal();
+
+  return new Promise((resolve) => {
+    state.pendingConflictResolver = resolve;
+  });
+}
+
+function resolveSyncConflict(choice) {
+  if (state.pendingConflictResolver) {
+    state.pendingConflictResolver(choice);
+    state.pendingConflictResolver = null;
+  }
+  if (els.syncConflictDialog.open) {
+    els.syncConflictDialog.close();
+  }
+}
+
+async function performDriveSync({ reason = "Manual sync" } = {}) {
+  if (state.syncInFlight) {
+    return;
+  }
+
+  const settings = state.driveSettings;
+  if (!settings?.clientId || !settings?.refreshToken) {
+    throw new Error("Connect Google Drive in Settings first");
+  }
+
+  state.syncInFlight = true;
+  renderDriveSettings();
+
+  try {
+    await updateDriveStatus(`${reason} in progress...`);
+    const localBackup = await exportBackupData();
+    const accessToken = await refreshGoogleAccessToken({
+      clientId: settings.clientId,
+      refreshToken: settings.refreshToken
+    });
+
+    let remoteFile = settings.fileId
+      ? { id: settings.fileId }
+      : await findDriveBackupFile(accessToken);
+    let remoteBackup = null;
+
+    if (remoteFile?.id) {
+      remoteBackup = await downloadDriveBackup(accessToken, remoteFile.id);
+    }
+
+    const localUpdatedAt = Number(localBackup?.vault?.updatedAt || 0);
+    const remoteUpdatedAt = Number(remoteBackup?.vault?.updatedAt || 0);
+    const baselineUpdatedAt = Number(settings.lastSyncedVaultUpdatedAt || 0);
+    const localChangedSinceBaseline = localUpdatedAt > baselineUpdatedAt;
+    const remoteChangedSinceBaseline = remoteUpdatedAt > baselineUpdatedAt;
+
+    if (
+      remoteBackup &&
+      baselineUpdatedAt > 0 &&
+      localChangedSinceBaseline &&
+      remoteChangedSinceBaseline &&
+      localUpdatedAt !== remoteUpdatedAt
+    ) {
+      const choice = await promptSyncConflict({
+        localUpdatedAt,
+        remoteUpdatedAt
+      });
+
+      if (choice === "cancel") {
+        await updateDriveStatus("Sync cancelled because both computers changed since the last sync");
+        return;
+      }
+
+      if (choice === "remote") {
+        await importBackupData(remoteBackup);
+        await refreshData();
+        if (!state.vaultUnlocked) {
+          return;
+        }
+        state.driveSettings = await updateDriveSyncSettings({
+          lastSyncedVaultUpdatedAt: remoteUpdatedAt,
+          lastSyncAt: Date.now(),
+          lastSyncStatus: "Used the Google Drive version after a sync conflict"
+        }, {
+          preserveVaultUpdatedAt: true
+        });
+        renderDriveSettings();
+        return;
+      }
+    }
+
+    if (remoteBackup && remoteUpdatedAt > localUpdatedAt) {
+      await importBackupData(remoteBackup);
+      await refreshData();
+      if (!state.vaultUnlocked) {
+        return;
+      }
+      const refreshedSettings = await getDriveSyncSettings();
+      const uploaded = await uploadDriveBackup(
+        accessToken,
+        remoteBackup,
+        remoteFile?.id || refreshedSettings.fileId
+      );
+      state.driveSettings = await updateDriveSyncSettings({
+        fileId: uploaded.id || remoteFile?.id || refreshedSettings.fileId || "",
+        lastSyncedVaultUpdatedAt: remoteUpdatedAt,
+        lastSyncAt: Date.now(),
+        lastSyncStatus: "Downloaded latest encrypted backup from Google Drive"
+      }, {
+        preserveVaultUpdatedAt: true
+      });
+      renderDriveSettings();
+      return;
+    }
+
+    const uploaded = await uploadDriveBackup(accessToken, localBackup, remoteFile?.id || settings.fileId);
+    state.driveSettings = await updateDriveSyncSettings({
+      fileId: uploaded.id || remoteFile?.id || settings.fileId || "",
+      lastSyncedVaultUpdatedAt: localUpdatedAt,
+      lastSyncAt: Date.now(),
+      lastSyncStatus: remoteBackup
+        ? "Uploaded latest encrypted backup to Google Drive"
+        : "Created encrypted backup in Google Drive"
+    }, {
+      preserveVaultUpdatedAt: true
+    });
+    renderDriveSettings();
+  } catch (error) {
+    await updateDriveStatus(error.message || "Google Drive sync failed");
+    throw error;
+  } finally {
+    state.syncInFlight = false;
+    renderDriveSettings();
+  }
+}
+
+async function syncIfEnabled(reason) {
+  if (!state.vaultUnlocked || !state.driveSettings?.autoSync || !state.driveSettings?.refreshToken) {
+    return;
+  }
+
+  try {
+    await performDriveSync({ reason });
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 function attachEvents() {
+  els.collectionsTabBtn.addEventListener("click", () => {
+    state.activeView = "collections";
+    renderView();
+  });
+
+  els.settingsTabBtn.addEventListener("click", () => {
+    state.activeView = "settings";
+    renderView();
+  });
+
   els.searchInput.addEventListener("input", (event) => {
     state.searchTerm = event.target.value.trim();
     render();
@@ -823,7 +1100,9 @@ function attachEvents() {
 
   els.addLinkBtn.addEventListener("click", () => openLinkDialog());
   els.importBackupBtn.addEventListener("click", () => els.importBackupInput.click());
+  els.settingsImportBackupBtn.addEventListener("click", () => els.importBackupInput.click());
   els.exportBackupBtn.addEventListener("click", exportBackup);
+  els.settingsExportBackupBtn.addEventListener("click", exportBackup);
   els.lockVaultBtn.addEventListener("click", async () => {
     await lockVault();
     await refreshData();
@@ -849,10 +1128,76 @@ function attachEvents() {
     }
     await deleteCollection(activeCollection.id);
     await refreshData();
+    await syncIfEnabled("Collection deleted");
   });
   els.saveCurrentTabBtn.addEventListener("click", () => saveCurrentTabToGroup());
   els.importWindowBtn.addEventListener("click", () => importCurrentWindow());
   els.openGroupBtn.addEventListener("click", openVisibleLinks);
+  els.googleClientIdInput.addEventListener("change", async (event) => {
+    const clientId = event.target.value.trim();
+    state.driveSettings = await updateDriveSyncSettings({
+      clientId,
+      lastSyncStatus: clientId ? "OAuth client ID saved" : "Not connected"
+    }, {
+      preserveVaultUpdatedAt: true
+    });
+    renderDriveSettings();
+  });
+  els.googleAutoSyncInput.addEventListener("change", async (event) => {
+    state.driveSettings = await updateDriveSyncSettings({
+      autoSync: event.target.checked
+    }, {
+      preserveVaultUpdatedAt: true
+    });
+    renderDriveSettings();
+  });
+  els.connectDriveBtn.addEventListener("click", async () => {
+    try {
+      const clientId = els.googleClientIdInput.value.trim();
+      const result = await connectGoogleDrive(clientId);
+      state.driveSettings = await updateDriveSyncSettings({
+        clientId,
+        refreshToken: result.refreshToken,
+        fileId: "",
+        lastSyncedVaultUpdatedAt: 0,
+        lastSyncAt: 0,
+        lastSyncStatus: "Connected to Google Drive"
+      }, {
+        preserveVaultUpdatedAt: true
+      });
+      renderDriveSettings();
+      await performDriveSync({ reason: "Initial sync" });
+    } catch (error) {
+      window.alert(error.message || "Could not connect Google Drive");
+    }
+  });
+  els.disconnectDriveBtn.addEventListener("click", async () => {
+    state.driveSettings = await updateDriveSyncSettings({
+      refreshToken: "",
+      fileId: "",
+      autoSync: false,
+      lastSyncedVaultUpdatedAt: 0,
+      lastSyncAt: 0,
+      lastSyncStatus: "Disconnected"
+    }, {
+      preserveVaultUpdatedAt: true
+    });
+    renderDriveSettings();
+  });
+  els.syncNowBtn.addEventListener("click", async () => {
+    try {
+      await performDriveSync({ reason: "Manual sync" });
+    } catch (error) {
+      window.alert(error.message || "Sync failed");
+    }
+  });
+  els.keepLocalConflictBtn.addEventListener("click", () => resolveSyncConflict("local"));
+  els.useRemoteConflictBtn.addEventListener("click", () => resolveSyncConflict("remote"));
+  els.cancelConflictBtn.addEventListener("click", () => resolveSyncConflict("cancel"));
+  els.syncConflictDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    resolveSyncConflict("cancel");
+  });
   els.importBackupInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -872,6 +1217,7 @@ function attachEvents() {
     await importBackupData(parsed);
     event.target.value = "";
     await refreshData();
+    await syncIfEnabled("Backup import");
   });
 
   els.linkForm.addEventListener("submit", async (event) => {
@@ -889,6 +1235,7 @@ function attachEvents() {
     draftTags = [];
     closeDialog(els.linkDialog);
     await refreshData();
+    await syncIfEnabled("Link saved");
   });
 
   els.collectionForm.addEventListener("submit", async (event) => {
@@ -914,6 +1261,7 @@ function attachEvents() {
 
     closeDialog(els.collectionDialog);
     await refreshData();
+    await syncIfEnabled("Collection saved");
   });
 
   els.groupForm.addEventListener("submit", async (event) => {
@@ -935,6 +1283,7 @@ function attachEvents() {
     state.activeCollectionId = Number(els.groupCollection.value);
     closeDialog(els.groupDialog);
     await refreshData();
+    await syncIfEnabled("Group saved");
   });
 
   els.deleteCollectionBtn.addEventListener("click", async () => {
@@ -951,6 +1300,7 @@ function attachEvents() {
     await deleteCollection(id);
     closeDialog(els.collectionDialog);
     await refreshData();
+    await syncIfEnabled("Collection deleted");
   });
 
   els.deleteGroupBtn.addEventListener("click", async () => {
@@ -967,6 +1317,7 @@ function attachEvents() {
     await deleteGroup(id);
     closeDialog(els.groupDialog);
     await refreshData();
+    await syncIfEnabled("Group deleted");
   });
 
   document.querySelectorAll("[data-close-dialog]").forEach((button) => {

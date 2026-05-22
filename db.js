@@ -146,6 +146,17 @@ function createDefaultVault() {
       }
     ],
     links: [],
+    syncSettings: {
+      googleDrive: {
+        clientId: "",
+        refreshToken: "",
+        fileId: "",
+        autoSync: false,
+        lastSyncedVaultUpdatedAt: 0,
+        lastSyncAt: 0,
+        lastSyncStatus: "Not connected"
+      }
+    },
     counters: {
       collectionId: 3,
       groupId: 3,
@@ -166,6 +177,7 @@ function normalizeVaultData(data) {
   const collections = Array.isArray(data?.collections) ? data.collections : [];
   const groups = Array.isArray(data?.groups) ? data.groups : [];
   const links = Array.isArray(data?.links) ? data.links : [];
+  const googleDrive = data?.syncSettings?.googleDrive || {};
 
   return {
     collections,
@@ -176,6 +188,17 @@ function normalizeVaultData(data) {
       tags: normalizeTags(link.tags),
       notes: (link.notes || "").trim()
     })),
+    syncSettings: {
+      googleDrive: {
+        clientId: googleDrive.clientId || "",
+        refreshToken: googleDrive.refreshToken || "",
+        fileId: googleDrive.fileId || "",
+        autoSync: Boolean(googleDrive.autoSync),
+        lastSyncedVaultUpdatedAt: Number(googleDrive.lastSyncedVaultUpdatedAt || 0),
+        lastSyncAt: Number(googleDrive.lastSyncAt || 0),
+        lastSyncStatus: googleDrive.lastSyncStatus || "Not connected"
+      }
+    },
     counters: data?.counters || computeCounters({ collections, groups, links })
   };
 }
@@ -396,17 +419,22 @@ async function ensureSessionKeyLoaded() {
   return pageSessionKey;
 }
 
-async function persistCachedVault() {
+async function persistCachedVault(options = {}) {
+  const { preserveVaultUpdatedAt = false } = options;
   const key = await ensureSessionKeyLoaded();
   if (!key || !cachedVault) {
     throw new Error("Vault is locked");
   }
 
   const encrypted = await encryptVaultPayload(cachedVault, key);
+  const existingRecord = preserveVaultUpdatedAt ? await getVaultRecord() : null;
   await putVaultRecord({
     id: VAULT_ID,
     ...encrypted,
-    updatedAt: Date.now()
+    updatedAt:
+      preserveVaultUpdatedAt && existingRecord?.updatedAt
+        ? existingRecord.updatedAt
+        : Date.now()
   });
 }
 
@@ -552,20 +580,77 @@ export async function getAllTags() {
 }
 
 export async function exportBackupData() {
-  const vault = await requireUnlockedVault();
+  const [record, saltBase64] = await Promise.all([getVaultRecord(), getMetaValue("vaultSalt")]);
+  if (!record || !saltBase64) {
+    throw new Error("Vault is not configured");
+  }
+
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     encrypted: true,
-    data: normalizeVaultData(vault)
+    vault: {
+      iv: record.iv,
+      cipherText: record.cipherText,
+      updatedAt: record.updatedAt || 0
+    },
+    meta: {
+      vaultSalt: saltBase64
+    }
   };
 }
 
 export async function importBackupData(backup) {
+  if (backup?.encrypted && backup?.vault && backup?.meta?.vaultSalt) {
+    const currentSalt = await getMetaValue("vaultSalt");
+    const currentKey = await ensureSessionKeyLoaded();
+    const nextRecord = {
+      id: VAULT_ID,
+      iv: backup.vault.iv,
+      cipherText: backup.vault.cipherText,
+      updatedAt: backup.vault.updatedAt || Date.now()
+    };
+
+    await putVaultRecord(nextRecord);
+    await setMetaValue("vaultConfigured", true);
+    await setMetaValue("vaultSalt", backup.meta.vaultSalt);
+
+    if (currentKey && currentSalt === backup.meta.vaultSalt) {
+      cachedVault = await decryptVaultPayload(nextRecord, currentKey);
+      pageSessionKey = currentKey;
+    } else {
+      pageSessionKey = null;
+      cachedVault = null;
+      await clearSessionKeyFromSessionStorage();
+    }
+    return;
+  }
+
   const payload = backup?.data || backup;
   cachedVault = normalizeVaultData(payload);
   cachedVault.counters = computeCounters(cachedVault);
   await persistCachedVault();
+}
+
+export async function getDriveSyncSettings() {
+  const vault = await requireUnlockedVault();
+  return {
+    ...vault.syncSettings.googleDrive
+  };
+}
+
+export async function updateDriveSyncSettings(updates, options = {}) {
+  const vault = await requireUnlockedVault();
+  vault.syncSettings.googleDrive = {
+    ...vault.syncSettings.googleDrive,
+    ...updates
+  };
+  await persistCachedVault({
+    preserveVaultUpdatedAt: Boolean(options.preserveVaultUpdatedAt)
+  });
+  return {
+    ...vault.syncSettings.googleDrive
+  };
 }
 
 export async function getSnapshot() {

@@ -62,36 +62,111 @@
             </div>
           </section>
 
-          <section class="collection-hero">
-            <div>
-              <p class="eyebrow">Active collection</p>
-              <div class="hero-title-row">
-                <div id="heroBadge" class="hero-badge"></div>
-                <div>
-                  <h2 id="heroTitle">All collections</h2>
-                  <p id="heroMeta" class="hero-meta"></p>
+          <section class="view-switcher">
+            <button id="collectionsTabBtn" class="view-tab active" type="button">Collections</button>
+            <button id="settingsTabBtn" class="view-tab" type="button">Settings</button>
+          </section>
+
+          <section id="collectionsView">
+            <section class="collection-hero">
+              <div>
+                <p class="eyebrow">Active collection</p>
+                <div class="hero-title-row">
+                  <div id="heroBadge" class="hero-badge"></div>
+                  <div>
+                    <h2 id="heroTitle">All collections</h2>
+                    <p id="heroMeta" class="hero-meta"></p>
+                  </div>
                 </div>
               </div>
+
+              <div class="hero-actions">
+                <button id="newGroupBtn" class="ghost-button">New group</button>
+                <button id="editCollectionBtn" class="ghost-button">Edit collection</button>
+                <button id="deleteCollectionQuickBtn" class="danger-button">Delete collection</button>
+                <button id="openGroupBtn" class="ghost-button">Open visible</button>
+              </div>
+            </section>
+
+            <section class="tag-filter-bar">
+              <div id="tagFilterChips" class="tag-filter-chips"></div>
+            </section>
+
+            <section id="emptyState" class="empty-state hidden">
+              <h3>No groups yet</h3>
+              <p>Create a group in this collection, then save links with names, tags, notes, and URLs.</p>
+            </section>
+
+            <section id="groupsContainer" class="groups-container"></section>
+          </section>
+
+          <section id="settingsView" class="settings-view hidden">
+            <div class="settings-grid">
+              <section class="settings-card">
+                <div class="settings-card-header">
+                  <div>
+                    <p class="eyebrow">Backup</p>
+                    <h2>Encrypted backups</h2>
+                  </div>
+                </div>
+                <p class="settings-copy">
+                  Exports and imports use the encrypted vault package, so backup files stay encrypted before they ever leave this browser.
+                </p>
+                <div class="settings-actions">
+                  <button id="settingsExportBackupBtn" class="ghost-button" type="button">Export encrypted backup</button>
+                  <button id="settingsImportBackupBtn" class="ghost-button" type="button">Import encrypted backup</button>
+                </div>
+              </section>
+
+              <section class="settings-card">
+                <div class="settings-card-header">
+                  <div>
+                    <p class="eyebrow">Sync</p>
+                    <h2>Google Drive</h2>
+                  </div>
+                </div>
+                <p class="settings-copy">
+                  Session Canvas stores one encrypted vault file in Google Drive app storage so you can sync between computers without uploading plaintext.
+                </p>
+
+                <label class="field">
+                  <span>OAuth client ID</span>
+                  <input id="googleClientIdInput" placeholder="Paste your Google OAuth client ID" />
+                </label>
+
+                <div class="settings-detail">
+                  <span class="settings-label">Redirect URI</span>
+                  <code id="googleRedirectUri"></code>
+                </div>
+
+                <label class="checkbox-field">
+                  <input id="googleAutoSyncInput" type="checkbox" />
+                  <span>Auto sync after changes and on unlock</span>
+                </label>
+
+                <div class="settings-actions">
+                  <button id="connectDriveBtn" class="primary-button" type="button">Connect Google Drive</button>
+                  <button id="disconnectDriveBtn" class="danger-button" type="button">Disconnect</button>
+                  <button id="syncNowBtn" class="ghost-button" type="button">Sync now</button>
+                </div>
+
+                <div class="settings-status">
+                  <div class="settings-detail">
+                    <span class="settings-label">Connection</span>
+                    <span id="driveConnectionStatus">Not connected</span>
+                  </div>
+                  <div class="settings-detail">
+                    <span class="settings-label">Last sync</span>
+                    <span id="driveLastSyncAt">Never</span>
+                  </div>
+                  <div class="settings-detail">
+                    <span class="settings-label">Status</span>
+                    <span id="driveLastSyncStatus">Not connected</span>
+                  </div>
+                </div>
+              </section>
             </div>
-
-            <div class="hero-actions">
-              <button id="newGroupBtn" class="ghost-button">New group</button>
-              <button id="editCollectionBtn" class="ghost-button">Edit collection</button>
-              <button id="deleteCollectionQuickBtn" class="danger-button">Delete collection</button>
-              <button id="openGroupBtn" class="ghost-button">Open visible</button>
-            </div>
           </section>
-
-          <section class="tag-filter-bar">
-            <div id="tagFilterChips" class="tag-filter-chips"></div>
-          </section>
-
-          <section id="emptyState" class="empty-state hidden">
-            <h3>No groups yet</h3>
-            <p>Create a group in this collection, then save links with names, tags, notes, and URLs.</p>
-          </section>
-
-          <section id="groupsContainer" class="groups-container"></section>
         </main>
       </div>
     </div>
@@ -219,6 +294,40 @@
           <div class="modal-actions-inline">
             <button type="button" class="ghost-button" data-close-dialog="groupDialog">Cancel</button>
             <button type="submit" class="primary-button">Save group</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="syncConflictDialog" class="modal">
+      <form class="modal-form compact" method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Sync conflict</p>
+            <h3>Choose which encrypted vault to keep</h3>
+          </div>
+        </div>
+
+        <p id="syncConflictMessage" class="settings-copy">
+          Session Canvas found newer changes both here and in Google Drive.
+        </p>
+
+        <div class="settings-status">
+          <div class="settings-detail">
+            <span class="settings-label">Local vault</span>
+            <span id="syncConflictLocal"></span>
+          </div>
+          <div class="settings-detail">
+            <span class="settings-label">Drive vault</span>
+            <span id="syncConflictRemote"></span>
+          </div>
+        </div>
+
+        <div class="modal-actions spread">
+          <button id="cancelConflictBtn" type="button" class="ghost-button">Cancel</button>
+          <div class="modal-actions-inline">
+            <button id="useRemoteConflictBtn" type="button" class="ghost-button">Use Google Drive</button>
+            <button id="keepLocalConflictBtn" type="button" class="primary-button">Keep local</button>
           </div>
         </div>
       </form>

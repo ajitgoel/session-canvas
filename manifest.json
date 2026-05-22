@@ -5,7 +5,13 @@
   "description": "A simplified Session Buddy-style link manager with collections, groups, notes, tags, and IndexedDB storage.",
   "permissions": [
     "tabs",
-    "storage"
+    "storage",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*",
+    "https://accounts.google.com/*"
   ],
   "action": {
     "default_title": "Session Canvas",
