@@ -365,6 +365,11 @@ button {
   line-height: 1.45;
 }
 
+.settings-copy.compact {
+  margin-top: -4px;
+  font-size: 0.86rem;
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
@@ -400,6 +405,51 @@ button {
   background: rgba(17, 24, 39, 0.05);
   font-size: 0.8rem;
   word-break: break-all;
+}
+
+.settings-history {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.settings-history-header {
+  margin-bottom: 10px;
+}
+
+.settings-history-empty {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.settings-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sync-history-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.03);
+  border: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.sync-history-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.sync-history-meta {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.sync-history-detail {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .security-gate {

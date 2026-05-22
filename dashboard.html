@@ -28,8 +28,6 @@
 
         <div class="topbar-actions">
           <button id="lockVaultBtn" class="ghost-button hidden">Lock</button>
-          <button id="importBackupBtn" class="ghost-button">Import backup</button>
-          <button id="exportBackupBtn" class="ghost-button">Export backup</button>
           <button id="saveCurrentTabBtn" class="ghost-button">Save current tab</button>
           <button id="importWindowBtn" class="ghost-button">Import window</button>
           <button id="addLinkBtn" class="primary-button">New link</button>
@@ -128,11 +126,17 @@
                 <p class="settings-copy">
                   Session Canvas stores one encrypted vault file in Google Drive app storage so you can sync between computers without uploading plaintext.
                 </p>
+                <p class="settings-copy compact">
+                  Choose the Google account in the Google sign-in window that opens when you click Connect or Reconnect. To switch accounts later, disconnect and reconnect.
+                </p>
 
                 <label class="field">
                   <span>OAuth client ID</span>
                   <input id="googleClientIdInput" placeholder="Paste your Google OAuth client ID" />
                 </label>
+                <p class="settings-copy compact">
+                  You need to create a Google OAuth client ID for this extension first. After you paste it here, Connect Google Drive will open Google account selection and consent.
+                </p>
 
                 <div class="settings-detail">
                   <span class="settings-label">Redirect URI</span>
@@ -163,6 +167,14 @@
                     <span class="settings-label">Status</span>
                     <span id="driveLastSyncStatus">Not connected</span>
                   </div>
+                </div>
+
+                <div class="settings-history">
+                  <div class="settings-history-header">
+                    <span class="settings-label">Recent sync history</span>
+                  </div>
+                  <div id="syncHistoryEmpty" class="settings-history-empty">No sync history yet.</div>
+                  <div id="syncHistoryList" class="settings-history-list"></div>
                 </div>
               </section>
             </div>

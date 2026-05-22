@@ -42,6 +42,24 @@ function normalizeTags(tags) {
   return [];
 }
 
+function normalizeDriveHistory(history) {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history
+    .map((entry) => ({
+      at: Number(entry?.at || 0),
+      action: entry?.action || "Sync event",
+      detail: entry?.detail || "",
+      localUpdatedAt: Number(entry?.localUpdatedAt || 0),
+      remoteUpdatedAt: Number(entry?.remoteUpdatedAt || 0)
+    }))
+    .filter((entry) => entry.at > 0)
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 8);
+}
+
 function normalizeUrl(rawUrl) {
   const value = (rawUrl || "").trim();
   if (!value) {
@@ -154,7 +172,8 @@ function createDefaultVault() {
         autoSync: false,
         lastSyncedVaultUpdatedAt: 0,
         lastSyncAt: 0,
-        lastSyncStatus: "Not connected"
+        lastSyncStatus: "Not connected",
+        history: []
       }
     },
     counters: {
@@ -196,7 +215,8 @@ function normalizeVaultData(data) {
         autoSync: Boolean(googleDrive.autoSync),
         lastSyncedVaultUpdatedAt: Number(googleDrive.lastSyncedVaultUpdatedAt || 0),
         lastSyncAt: Number(googleDrive.lastSyncAt || 0),
-        lastSyncStatus: googleDrive.lastSyncStatus || "Not connected"
+        lastSyncStatus: googleDrive.lastSyncStatus || "Not connected",
+        history: normalizeDriveHistory(googleDrive.history)
       }
     },
     counters: data?.counters || computeCounters({ collections, groups, links })

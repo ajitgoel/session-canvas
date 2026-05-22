@@ -51,8 +51,6 @@ const els = {
   searchInput: document.querySelector("#searchInput"),
   saveCurrentTabBtn: document.querySelector("#saveCurrentTabBtn"),
   importWindowBtn: document.querySelector("#importWindowBtn"),
-  importBackupBtn: document.querySelector("#importBackupBtn"),
-  exportBackupBtn: document.querySelector("#exportBackupBtn"),
   lockVaultBtn: document.querySelector("#lockVaultBtn"),
   addLinkBtn: document.querySelector("#addLinkBtn"),
   newCollectionBtn: document.querySelector("#newCollectionBtn"),
@@ -120,6 +118,8 @@ const els = {
   driveConnectionStatus: document.querySelector("#driveConnectionStatus"),
   driveLastSyncAt: document.querySelector("#driveLastSyncAt"),
   driveLastSyncStatus: document.querySelector("#driveLastSyncStatus"),
+  syncHistoryEmpty: document.querySelector("#syncHistoryEmpty"),
+  syncHistoryList: document.querySelector("#syncHistoryList"),
   syncConflictDialog: document.querySelector("#syncConflictDialog"),
   syncConflictMessage: document.querySelector("#syncConflictMessage"),
   syncConflictLocal: document.querySelector("#syncConflictLocal"),
@@ -159,6 +159,16 @@ function formatLastSync(date) {
   }
 
   return new Date(date).toLocaleString();
+}
+
+function buildSyncHistoryEntry(action, detail, extra = {}) {
+  return {
+    at: Date.now(),
+    action,
+    detail,
+    localUpdatedAt: Number(extra.localUpdatedAt || 0),
+    remoteUpdatedAt: Number(extra.remoteUpdatedAt || 0)
+  };
 }
 
 function matchesSearch(parts, searchTerm) {
@@ -253,8 +263,6 @@ function setVaultUiState() {
   els.lockVaultBtn.classList.toggle("hidden", locked);
 
   [
-    els.importBackupBtn,
-    els.exportBackupBtn,
     els.saveCurrentTabBtn,
     els.importWindowBtn,
     els.addLinkBtn,
@@ -304,7 +312,8 @@ function renderDriveSettings() {
     autoSync: false,
     lastSyncedVaultUpdatedAt: 0,
     lastSyncAt: 0,
-    lastSyncStatus: "Not connected"
+    lastSyncStatus: "Not connected",
+    history: []
   };
   const connected = Boolean(settings.refreshToken);
 
@@ -319,6 +328,34 @@ function renderDriveSettings() {
   els.connectDriveBtn.textContent = connected ? "Reconnect Google Drive" : "Connect Google Drive";
   els.disconnectDriveBtn.disabled = !connected || !state.vaultUnlocked || state.syncInFlight;
   els.syncNowBtn.disabled = !connected || !state.vaultUnlocked || state.syncInFlight;
+
+  els.syncHistoryList.innerHTML = "";
+  const history = settings.history || [];
+  els.syncHistoryEmpty.classList.toggle("hidden", history.length > 0);
+
+  history.forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = "sync-history-item";
+
+    const title = document.createElement("div");
+    title.className = "sync-history-title";
+    title.textContent = entry.action;
+
+    const meta = document.createElement("div");
+    meta.className = "sync-history-meta";
+    meta.textContent = formatLastSync(entry.at);
+
+    const detail = document.createElement("div");
+    detail.className = "sync-history-detail";
+    detail.textContent = entry.detail || "";
+
+    item.append(title, meta);
+    if (entry.detail) {
+      item.append(detail);
+    }
+
+    els.syncHistoryList.append(item);
+  });
 }
 
 async function refreshCurrentTabCount() {
@@ -904,6 +941,16 @@ async function updateDriveStatus(lastSyncStatus, extra = {}) {
   renderDriveSettings();
 }
 
+async function appendSyncHistory(action, detail, extra = {}) {
+  const history = state.driveSettings?.history || [];
+  state.driveSettings = await updateDriveSyncSettings({
+    history: [buildSyncHistoryEntry(action, detail, extra), ...history].slice(0, 8)
+  }, {
+    preserveVaultUpdatedAt: true
+  });
+  renderDriveSettings();
+}
+
 function promptSyncConflict({ localUpdatedAt, remoteUpdatedAt }) {
   els.syncConflictMessage.textContent =
     "Session Canvas found newer changes both on this computer and in Google Drive. Choose which encrypted vault should win.";
@@ -976,6 +1023,11 @@ async function performDriveSync({ reason = "Manual sync" } = {}) {
 
       if (choice === "cancel") {
         await updateDriveStatus("Sync cancelled because both computers changed since the last sync");
+        await appendSyncHistory(
+          "Conflict cancelled",
+          "Both local and Google Drive changed since the last sync, and the conflict was left unresolved.",
+          { localUpdatedAt, remoteUpdatedAt }
+        );
         return;
       }
 
@@ -992,9 +1044,20 @@ async function performDriveSync({ reason = "Manual sync" } = {}) {
         }, {
           preserveVaultUpdatedAt: true
         });
+        await appendSyncHistory(
+          "Restored from Google Drive",
+          "Used the Google Drive vault after a sync conflict.",
+          { localUpdatedAt, remoteUpdatedAt }
+        );
         renderDriveSettings();
         return;
       }
+
+      await appendSyncHistory(
+        "Kept local vault",
+        "Kept the local encrypted vault after a sync conflict and uploaded it to Google Drive.",
+        { localUpdatedAt, remoteUpdatedAt }
+      );
     }
 
     if (remoteBackup && remoteUpdatedAt > localUpdatedAt) {
@@ -1017,6 +1080,11 @@ async function performDriveSync({ reason = "Manual sync" } = {}) {
       }, {
         preserveVaultUpdatedAt: true
       });
+      await appendSyncHistory(
+        "Downloaded from Google Drive",
+        "Applied the newer encrypted backup from Google Drive on this computer.",
+        { localUpdatedAt, remoteUpdatedAt }
+      );
       renderDriveSettings();
       return;
     }
@@ -1032,6 +1100,13 @@ async function performDriveSync({ reason = "Manual sync" } = {}) {
     }, {
       preserveVaultUpdatedAt: true
     });
+    await appendSyncHistory(
+      remoteBackup ? "Uploaded to Google Drive" : "Created Drive backup",
+      remoteBackup
+        ? "Uploaded the latest local encrypted vault to Google Drive."
+        : "Created the first encrypted vault backup in Google Drive.",
+      { localUpdatedAt, remoteUpdatedAt }
+    );
     renderDriveSettings();
   } catch (error) {
     await updateDriveStatus(error.message || "Google Drive sync failed");
@@ -1099,9 +1174,7 @@ function attachEvents() {
   });
 
   els.addLinkBtn.addEventListener("click", () => openLinkDialog());
-  els.importBackupBtn.addEventListener("click", () => els.importBackupInput.click());
   els.settingsImportBackupBtn.addEventListener("click", () => els.importBackupInput.click());
-  els.exportBackupBtn.addEventListener("click", exportBackup);
   els.settingsExportBackupBtn.addEventListener("click", exportBackup);
   els.lockVaultBtn.addEventListener("click", async () => {
     await lockVault();
@@ -1165,6 +1238,10 @@ function attachEvents() {
       }, {
         preserveVaultUpdatedAt: true
       });
+      await appendSyncHistory(
+        "Connected Google Drive",
+        "Authorized Session Canvas to sync encrypted backups with the selected Google account."
+      );
       renderDriveSettings();
       await performDriveSync({ reason: "Initial sync" });
     } catch (error) {
@@ -1182,6 +1259,10 @@ function attachEvents() {
     }, {
       preserveVaultUpdatedAt: true
     });
+    await appendSyncHistory(
+      "Disconnected Google Drive",
+      "Removed the current Google Drive sync connection from this vault."
+    );
     renderDriveSettings();
   });
   els.syncNowBtn.addEventListener("click", async () => {
@@ -1217,6 +1298,12 @@ function attachEvents() {
     await importBackupData(parsed);
     event.target.value = "";
     await refreshData();
+    if (state.vaultUnlocked) {
+      await appendSyncHistory(
+        "Imported encrypted backup",
+        "Replaced the current local vault with an imported encrypted backup file."
+      );
+    }
     await syncIfEnabled("Backup import");
   });
 
