@@ -1,11 +1,16 @@
 const DB_NAME = "session-canvas-db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const COLLECTIONS_STORE = "collections";
 const GROUPS_STORE = "groups";
 const LINKS_STORE = "links";
 const META_STORE = "meta";
+const VAULT_STORE = "vault";
+const VAULT_ID = "primary";
+const SESSION_KEY_NAME = "sessionCanvasVaultKey";
 
 let dbPromise;
+let pageSessionKey = null;
+let cachedVault = null;
 
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
@@ -79,6 +84,205 @@ function requestNoResult(request) {
   });
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function createDefaultVault() {
+  const now = Date.now();
+  return {
+    collections: [
+      {
+        id: 1,
+        name: "Personal",
+        color: "#efb907",
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 2,
+        name: "Work",
+        color: "#1c86e2",
+        sortOrder: 1,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    groups: [
+      {
+        id: 1,
+        collectionId: 1,
+        name: "Inbox",
+        color: "#efb907",
+        collapsed: false,
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 2,
+        collectionId: 2,
+        name: "Research",
+        color: "#1c86e2",
+        collapsed: false,
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    links: [],
+    counters: {
+      collectionId: 3,
+      groupId: 3,
+      linkId: 1
+    }
+  };
+}
+
+function computeCounters(data) {
+  return {
+    collectionId: Math.max(0, ...data.collections.map((item) => item.id || 0)) + 1,
+    groupId: Math.max(0, ...data.groups.map((item) => item.id || 0)) + 1,
+    linkId: Math.max(0, ...data.links.map((item) => item.id || 0)) + 1
+  };
+}
+
+function normalizeVaultData(data) {
+  const collections = Array.isArray(data?.collections) ? data.collections : [];
+  const groups = Array.isArray(data?.groups) ? data.groups : [];
+  const links = Array.isArray(data?.links) ? data.links : [];
+
+  return {
+    collections,
+    groups,
+    links: links.map((link) => ({
+      ...link,
+      url: normalizeUrl(link.url),
+      tags: normalizeTags(link.tags),
+      notes: (link.notes || "").trim()
+    })),
+    counters: data?.counters || computeCounters({ collections, groups, links })
+  };
+}
+
+async function deriveKeyFromPassphrase(passphrase, saltBytes) {
+  const encoder = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: saltBytes,
+      iterations: 250000,
+      hash: "SHA-256"
+    },
+    baseKey,
+    {
+      name: "AES-GCM",
+      length: 256
+    },
+    true,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function exportSessionKey(key) {
+  const raw = await crypto.subtle.exportKey("raw", key);
+  return arrayBufferToBase64(raw);
+}
+
+async function importSessionKey(rawBase64) {
+  return crypto.subtle.importKey(
+    "raw",
+    base64ToUint8Array(rawBase64),
+    {
+      name: "AES-GCM"
+    },
+    true,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function saveSessionKeyToSessionStorage(key) {
+  if (!chrome?.storage?.session) {
+    return;
+  }
+  const raw = await exportSessionKey(key);
+  await chrome.storage.session.set({
+    [SESSION_KEY_NAME]: raw
+  });
+}
+
+async function loadSessionKeyFromSessionStorage() {
+  if (!chrome?.storage?.session) {
+    return null;
+  }
+  const result = await chrome.storage.session.get(SESSION_KEY_NAME);
+  if (!result?.[SESSION_KEY_NAME]) {
+    return null;
+  }
+  return importSessionKey(result[SESSION_KEY_NAME]);
+}
+
+async function clearSessionKeyFromSessionStorage() {
+  if (!chrome?.storage?.session) {
+    return;
+  }
+  await chrome.storage.session.remove(SESSION_KEY_NAME);
+}
+
+async function encryptVaultPayload(vault, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(JSON.stringify(vault));
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv
+    },
+    key,
+    encoded
+  );
+
+  return {
+    iv: arrayBufferToBase64(iv),
+    cipherText: arrayBufferToBase64(encrypted)
+  };
+}
+
+async function decryptVaultPayload(record, key) {
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: base64ToUint8Array(record.iv)
+    },
+    key,
+    base64ToUint8Array(record.cipherText)
+  );
+
+  return normalizeVaultData(JSON.parse(new TextDecoder().decode(decrypted)));
+}
+
 export async function openDb() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
@@ -86,64 +290,25 @@ export async function openDb() {
 
       request.onupgradeneeded = () => {
         const db = request.result;
-        const transaction = request.transaction;
 
         if (!db.objectStoreNames.contains(COLLECTIONS_STORE)) {
-          const collections = db.createObjectStore(COLLECTIONS_STORE, {
-            keyPath: "id",
-            autoIncrement: true
-          });
-          collections.createIndex("by_updated_at", "updatedAt");
-          collections.createIndex("by_sort_order", "sortOrder");
+          db.createObjectStore(COLLECTIONS_STORE, { keyPath: "id", autoIncrement: true });
         }
 
         if (!db.objectStoreNames.contains(GROUPS_STORE)) {
-          const groups = db.createObjectStore(GROUPS_STORE, {
-            keyPath: "id",
-            autoIncrement: true
-          });
-          groups.createIndex("by_updated_at", "updatedAt");
-          groups.createIndex("by_sort_order", "sortOrder");
+          db.createObjectStore(GROUPS_STORE, { keyPath: "id", autoIncrement: true });
         }
 
         if (!db.objectStoreNames.contains(LINKS_STORE)) {
-          const links = db.createObjectStore(LINKS_STORE, {
-            keyPath: "id",
-            autoIncrement: true
-          });
-          links.createIndex("by_group_id", "groupId");
-          links.createIndex("by_updated_at", "updatedAt");
-          links.createIndex("by_search_text", "searchText");
+          db.createObjectStore(LINKS_STORE, { keyPath: "id", autoIncrement: true });
         }
 
         if (!db.objectStoreNames.contains(META_STORE)) {
           db.createObjectStore(META_STORE, { keyPath: "key" });
         }
 
-        if (request.oldVersion > 0 && request.oldVersion < 2) {
-          const collectionsStore = transaction.objectStore(COLLECTIONS_STORE);
-          const groupsStore = transaction.objectStore(GROUPS_STORE);
-          const addCollectionRequest = collectionsStore.add({
-            name: "Default",
-            color: "#efb907",
-            sortOrder: 0,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          });
-
-          addCollectionRequest.onsuccess = () => {
-            const defaultCollectionId = addCollectionRequest.result;
-            const getAllGroupsRequest = groupsStore.getAll();
-            getAllGroupsRequest.onsuccess = () => {
-              const groups = getAllGroupsRequest.result || [];
-              groups.forEach((group) => {
-                groupsStore.put({
-                  ...group,
-                  collectionId: defaultCollectionId
-                });
-              });
-            };
-          };
+        if (!db.objectStoreNames.contains(VAULT_STORE)) {
+          db.createObjectStore(VAULT_STORE, { keyPath: "id" });
         }
       };
 
@@ -165,56 +330,178 @@ async function getStore(storeName, mode = "readonly") {
   };
 }
 
-export async function ensureDefaultData() {
-  const collections = await getAllCollections();
-  if (collections.length === 0) {
-    const personal = await createCollection({
-      name: "Personal",
-      color: "#efb907"
-    });
+async function getMetaValue(key) {
+  const { store } = await getStore(META_STORE);
+  const result = await requestToPromise(store.get(key));
+  return result?.value;
+}
 
-    await createGroup({
-      collectionId: personal.id,
-      name: "Inbox",
-      color: "#efb907"
-    });
+async function setMetaValue(key, value) {
+  const { store, done } = await getStore(META_STORE, "readwrite");
+  store.put({ key, value });
+  await done;
+}
 
-    const work = await createCollection({
-      name: "Work",
-      color: "#1c86e2"
-    });
+async function getVaultRecord() {
+  const { store } = await getStore(VAULT_STORE);
+  return requestToPromise(store.get(VAULT_ID));
+}
 
-    await createGroup({
-      collectionId: work.id,
-      name: "Research",
-      color: "#1c86e2"
-    });
-    return;
+async function putVaultRecord(record) {
+  const { store, done } = await getStore(VAULT_STORE, "readwrite");
+  store.put(record);
+  await done;
+}
+
+async function clearLegacyStores() {
+  const db = await openDb();
+  const transaction = db.transaction([COLLECTIONS_STORE, GROUPS_STORE, LINKS_STORE], "readwrite");
+  await Promise.all([
+    requestNoResult(transaction.objectStore(COLLECTIONS_STORE).clear()),
+    requestNoResult(transaction.objectStore(GROUPS_STORE).clear()),
+    requestNoResult(transaction.objectStore(LINKS_STORE).clear())
+  ]);
+  await transactionDone(transaction);
+}
+
+async function readLegacyData() {
+  const db = await openDb();
+  const collectionStore = db.transaction(COLLECTIONS_STORE, "readonly").objectStore(COLLECTIONS_STORE);
+  const groupStore = db.transaction(GROUPS_STORE, "readonly").objectStore(GROUPS_STORE);
+  const linkStore = db.transaction(LINKS_STORE, "readonly").objectStore(LINKS_STORE);
+
+  const [collections, groups, links] = await Promise.all([
+    requestToPromise(collectionStore.getAll()),
+    requestToPromise(groupStore.getAll()),
+    requestToPromise(linkStore.getAll())
+  ]);
+
+  if (collections.length === 0 && groups.length === 0 && links.length === 0) {
+    return null;
   }
 
-  const groups = await getAllGroups();
-  if (groups.length > 0) {
-    return;
-  }
-
-  const primaryCollection = collections[0];
-  await createGroup({
-    collectionId: primaryCollection.id,
-    name: "Personal",
-    color: "#efb907"
-  });
-
-  await createGroup({
-    collectionId: primaryCollection.id,
-    name: "Research",
-    color: "#1c86e2"
+  return normalizeVaultData({
+    collections,
+    groups,
+    links
   });
 }
 
+async function ensureSessionKeyLoaded() {
+  if (pageSessionKey) {
+    return pageSessionKey;
+  }
+
+  pageSessionKey = await loadSessionKeyFromSessionStorage();
+  return pageSessionKey;
+}
+
+async function persistCachedVault() {
+  const key = await ensureSessionKeyLoaded();
+  if (!key || !cachedVault) {
+    throw new Error("Vault is locked");
+  }
+
+  const encrypted = await encryptVaultPayload(cachedVault, key);
+  await putVaultRecord({
+    id: VAULT_ID,
+    ...encrypted,
+    updatedAt: Date.now()
+  });
+}
+
+async function requireUnlockedVault() {
+  const key = await ensureSessionKeyLoaded();
+  if (!key) {
+    throw new Error("Vault is locked");
+  }
+
+  if (cachedVault) {
+    return cachedVault;
+  }
+
+  const record = await getVaultRecord();
+  if (!record) {
+    throw new Error("Vault is not configured");
+  }
+
+  cachedVault = await decryptVaultPayload(record, key);
+  return cachedVault;
+}
+
+export async function getVaultStatus() {
+  const [configured, sessionKey] = await Promise.all([
+    getMetaValue("vaultConfigured"),
+    loadSessionKeyFromSessionStorage()
+  ]);
+
+  return {
+    configured: Boolean(configured),
+    unlocked: Boolean(sessionKey)
+  };
+}
+
+export async function setupPassphrase(passphrase) {
+  if (!passphrase || passphrase.length < 6) {
+    throw new Error("Passphrase must be at least 6 characters");
+  }
+
+  const existingStatus = await getVaultStatus();
+  if (existingStatus.configured) {
+    throw new Error("Vault is already configured");
+  }
+
+  const legacy = await readLegacyData();
+  const vault = legacy || createDefaultVault();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await deriveKeyFromPassphrase(passphrase, salt);
+  const encrypted = await encryptVaultPayload(vault, key);
+
+  await putVaultRecord({
+    id: VAULT_ID,
+    ...encrypted,
+    updatedAt: Date.now()
+  });
+  await setMetaValue("vaultConfigured", true);
+  await setMetaValue("vaultSalt", arrayBufferToBase64(salt));
+  await clearLegacyStores();
+
+  pageSessionKey = key;
+  cachedVault = vault;
+  await saveSessionKeyToSessionStorage(key);
+}
+
+export async function unlockVault(passphrase) {
+  const saltBase64 = await getMetaValue("vaultSalt");
+  const record = await getVaultRecord();
+  if (!saltBase64 || !record) {
+    throw new Error("Vault is not configured");
+  }
+
+  const key = await deriveKeyFromPassphrase(passphrase, base64ToUint8Array(saltBase64));
+  const vault = await decryptVaultPayload(record, key);
+  pageSessionKey = key;
+  cachedVault = vault;
+  await saveSessionKeyToSessionStorage(key);
+}
+
+export async function lockVault() {
+  pageSessionKey = null;
+  cachedVault = null;
+  await clearSessionKeyFromSessionStorage();
+}
+
+export async function ensureDefaultData() {
+  const vault = await requireUnlockedVault();
+  if (vault.collections.length === 0) {
+    cachedVault = createDefaultVault();
+    await persistCachedVault();
+  }
+}
+
 export async function getAllCollections() {
-  const { store } = await getStore(COLLECTIONS_STORE);
-  const collections = await requestToPromise(store.getAll());
-  return collections.sort((a, b) => {
+  const vault = await requireUnlockedVault();
+  return [...vault.collections].sort((a, b) => {
     if ((a.sortOrder ?? 0) !== (b.sortOrder ?? 0)) {
       return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
     }
@@ -224,9 +511,8 @@ export async function getAllCollections() {
 }
 
 export async function getAllGroups() {
-  const { store } = await getStore(GROUPS_STORE);
-  const groups = await requestToPromise(store.getAll());
-  return groups.sort((a, b) => {
+  const vault = await requireUnlockedVault();
+  return [...vault.groups].sort((a, b) => {
     if ((a.sortOrder ?? 0) !== (b.sortOrder ?? 0)) {
       return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
     }
@@ -236,9 +522,8 @@ export async function getAllGroups() {
 }
 
 export async function getAllLinks() {
-  const { store } = await getStore(LINKS_STORE);
-  const links = await requestToPromise(store.getAll());
-  return links.sort((a, b) => b.updatedAt - a.updatedAt);
+  const vault = await requireUnlockedVault();
+  return [...vault.links].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getAllTags() {
@@ -267,70 +552,20 @@ export async function getAllTags() {
 }
 
 export async function exportBackupData() {
-  const [collections, groups, links] = await Promise.all([
-    getAllCollections(),
-    getAllGroups(),
-    getAllLinks()
-  ]);
-
+  const vault = await requireUnlockedVault();
   return {
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    data: {
-      collections,
-      groups,
-      links: links.map((link) => ({
-        ...link,
-        tags: normalizeTags(link.tags),
-        notesFormat: link.notesFormat || "plain"
-      }))
-    }
+    encrypted: true,
+    data: normalizeVaultData(vault)
   };
 }
 
 export async function importBackupData(backup) {
   const payload = backup?.data || backup;
-  const collections = Array.isArray(payload?.collections) ? payload.collections : [];
-  const groups = Array.isArray(payload?.groups) ? payload.groups : [];
-  const links = Array.isArray(payload?.links) ? payload.links : [];
-
-  const db = await openDb();
-  const transaction = db.transaction(
-    [COLLECTIONS_STORE, GROUPS_STORE, LINKS_STORE, META_STORE],
-    "readwrite"
-  );
-  const collectionsStore = transaction.objectStore(COLLECTIONS_STORE);
-  const groupsStore = transaction.objectStore(GROUPS_STORE);
-  const linksStore = transaction.objectStore(LINKS_STORE);
-  const metaStore = transaction.objectStore(META_STORE);
-
-  await Promise.all([
-    requestNoResult(collectionsStore.clear()),
-    requestNoResult(groupsStore.clear()),
-    requestNoResult(linksStore.clear())
-  ]);
-
-  collections.forEach((collection) => {
-    collectionsStore.put(collection);
-  });
-
-  groups.forEach((group) => {
-    groupsStore.put(group);
-  });
-
-  links.forEach((link) => {
-    const normalized = {
-      ...link,
-      url: normalizeUrl(link.url),
-      tags: normalizeTags(link.tags),
-      notesFormat: link.notesFormat || "plain"
-    };
-    normalized.searchText = buildSearchText(normalized, "");
-    linksStore.put(normalized);
-  });
-
-  metaStore.put({ key: "lastImportedAt", value: Date.now() });
-  await transactionDone(transaction);
+  cachedVault = normalizeVaultData(payload);
+  cachedVault.counters = computeCounters(cachedVault);
+  await persistCachedVault();
 }
 
 export async function getSnapshot() {
@@ -344,20 +579,16 @@ export async function getSnapshot() {
   const hydratedLinks = links.map((link) => ({
     ...link,
     tags: normalizeTags(link.tags),
-    notesFormat: link.notesFormat || "plain",
     groupName: groupMap.get(link.groupId)?.name || "Ungrouped"
   }));
 
   return collections.map((collection) => {
     const collectionGroups = groups
       .filter((group) => group.collectionId === collection.id)
-      .map((group) => {
-        const groupLinks = hydratedLinks.filter((link) => link.groupId === group.id);
-        return {
-          ...group,
-          links: groupLinks
-        };
-      });
+      .map((group) => ({
+        ...group,
+        links: hydratedLinks.filter((link) => link.groupId === group.id)
+      }));
 
     return {
       ...collection,
@@ -367,159 +598,148 @@ export async function getSnapshot() {
 }
 
 export async function createCollection({ name, color }) {
+  const vault = await requireUnlockedVault();
   const now = Date.now();
-  const collections = await getAllCollections();
-  const nextSortOrder = collections.length;
   const record = {
+    id: vault.counters.collectionId,
     name: name.trim(),
     color,
-    sortOrder: nextSortOrder,
+    sortOrder: vault.collections.length,
     createdAt: now,
     updatedAt: now
   };
 
-  const { store, done } = await getStore(COLLECTIONS_STORE, "readwrite");
-  const id = await requestToPromise(store.add(record));
-  await done;
-  return { ...record, id };
+  vault.counters.collectionId += 1;
+  vault.collections.push(record);
+  await persistCachedVault();
+  return record;
 }
 
 export async function updateCollection(id, updates) {
-  const { store, done } = await getStore(COLLECTIONS_STORE, "readwrite");
-  const current = await requestToPromise(store.get(id));
-  if (!current) {
+  const vault = await requireUnlockedVault();
+  const collection = vault.collections.find((item) => item.id === id);
+  if (!collection) {
     throw new Error("Collection not found");
   }
 
-  const next = {
-    ...current,
+  Object.assign(collection, {
     ...updates,
-    name: (updates.name ?? current.name).trim(),
+    name: (updates.name ?? collection.name).trim(),
     updatedAt: Date.now()
-  };
-
-  store.put(next);
-  await done;
-  return next;
+  });
+  await persistCachedVault();
+  return collection;
 }
 
 export async function createGroup({ collectionId, name, color }) {
+  const vault = await requireUnlockedVault();
   const now = Date.now();
-  const groups = await getAllGroups();
-  const nextSortOrder = groups.filter((group) => group.collectionId === Number(collectionId)).length;
   const record = {
+    id: vault.counters.groupId,
     collectionId: Number(collectionId),
     name: name.trim(),
     color,
     collapsed: false,
-    sortOrder: nextSortOrder,
+    sortOrder: vault.groups.filter((group) => group.collectionId === Number(collectionId)).length,
     createdAt: now,
     updatedAt: now
   };
 
-  const { store, done } = await getStore(GROUPS_STORE, "readwrite");
-  const id = await requestToPromise(store.add(record));
-  await done;
-  await updateCollection(record.collectionId, {});
-  return { ...record, id };
+  vault.counters.groupId += 1;
+  vault.groups.push(record);
+  const collection = vault.collections.find((item) => item.id === Number(collectionId));
+  if (collection) {
+    collection.updatedAt = now;
+  }
+  await persistCachedVault();
+  return record;
 }
 
 export async function updateGroup(id, updates) {
-  const { store, done } = await getStore(GROUPS_STORE, "readwrite");
-  const current = await requestToPromise(store.get(id));
-  if (!current) {
+  const vault = await requireUnlockedVault();
+  const group = vault.groups.find((item) => item.id === id);
+  if (!group) {
     throw new Error("Group not found");
   }
 
-  const next = {
-    ...current,
+  Object.assign(group, {
     ...updates,
-    collectionId: Number(updates.collectionId ?? current.collectionId),
-    name: (updates.name ?? current.name).trim(),
+    collectionId: Number(updates.collectionId ?? group.collectionId),
+    name: (updates.name ?? group.name).trim(),
     updatedAt: Date.now()
-  };
-
-  store.put(next);
-  await done;
-  await updateCollection(next.collectionId, {});
-  return next;
+  });
+  const collection = vault.collections.find((item) => item.id === group.collectionId);
+  if (collection) {
+    collection.updatedAt = Date.now();
+  }
+  await persistCachedVault();
+  return group;
 }
 
 export async function deleteCollection(id) {
-  const snapshot = await getSnapshot();
-  const targetCollection = snapshot.find((collection) => collection.id === id);
-  if (!targetCollection) {
+  const vault = await requireUnlockedVault();
+  const target = vault.collections.find((item) => item.id === id);
+  if (!target) {
     return;
   }
 
-  const remainingCollections = snapshot.filter((collection) => collection.id !== id);
+  const remainingCollections = vault.collections.filter((item) => item.id !== id);
   let fallbackCollection = remainingCollections[0];
   if (!fallbackCollection) {
     fallbackCollection = await createCollection({ name: "Saved", color: "#efb907" });
   }
 
-  const db = await openDb();
-  const transaction = db.transaction([COLLECTIONS_STORE, GROUPS_STORE], "readwrite");
-  const collectionsStore = transaction.objectStore(COLLECTIONS_STORE);
-  const groupsStore = transaction.objectStore(GROUPS_STORE);
+  vault.groups.forEach((group) => {
+    if (group.collectionId === id) {
+      group.collectionId = fallbackCollection.id;
+      group.updatedAt = Date.now();
+    }
+  });
 
-  for (const group of targetCollection.groups) {
-    groupsStore.put({
-      ...group,
-      collectionId: fallbackCollection.id,
-      updatedAt: Date.now()
-    });
-  }
-
-  collectionsStore.delete(id);
-  await transactionDone(transaction);
+  vault.collections = vault.collections.filter((item) => item.id !== id);
+  await persistCachedVault();
 }
 
 export async function deleteGroup(id) {
-  const snapshot = await getSnapshot();
-  const targetCollection = snapshot.find((collection) =>
-    collection.groups.some((group) => group.id === id)
-  );
-  const targetGroup = targetCollection?.groups.find((group) => group.id === id);
+  const vault = await requireUnlockedVault();
+  const targetGroup = vault.groups.find((item) => item.id === id);
   if (!targetGroup) {
     return;
   }
 
-  const remainingGroups = targetCollection.groups.filter((group) => group.id !== id);
-  let fallbackGroup = remainingGroups[0];
+  const siblingGroups = vault.groups.filter(
+    (group) => group.collectionId === targetGroup.collectionId && group.id !== id
+  );
+  let fallbackGroup = siblingGroups[0];
   if (!fallbackGroup) {
     fallbackGroup = await createGroup({
-      collectionId: targetCollection.id,
+      collectionId: targetGroup.collectionId,
       name: "Saved",
       color: "#efb907"
     });
   }
 
-  const db = await openDb();
-  const transaction = db.transaction([GROUPS_STORE, LINKS_STORE], "readwrite");
-  const groupsStore = transaction.objectStore(GROUPS_STORE);
-  const linksStore = transaction.objectStore(LINKS_STORE);
+  vault.links.forEach((link) => {
+    if (link.groupId === id) {
+      link.groupId = fallbackGroup.id;
+      link.searchText = buildSearchText(link, fallbackGroup.name);
+      link.updatedAt = Date.now();
+    }
+  });
 
-  for (const link of targetGroup.links) {
-    const { groupName, ...rest } = link;
-    linksStore.put({
-      ...rest,
-      groupId: fallbackGroup.id,
-      searchText: buildSearchText({ ...rest, groupId: fallbackGroup.id }, fallbackGroup.name),
-      updatedAt: Date.now()
-    });
+  vault.groups = vault.groups.filter((group) => group.id !== id);
+  const collection = vault.collections.find((item) => item.id === targetGroup.collectionId);
+  if (collection) {
+    collection.updatedAt = Date.now();
   }
-
-  groupsStore.delete(id);
-  await transactionDone(transaction);
-  await updateCollection(targetCollection.id, {});
+  await persistCachedVault();
 }
 
 export async function saveLink(link) {
-  const groups = await getAllGroups();
-  const group = groups.find((entry) => entry.id === Number(link.groupId)) || groups[0];
+  const vault = await requireUnlockedVault();
+  const group = vault.groups.find((entry) => entry.id === Number(link.groupId));
   if (!group) {
-    throw new Error("No groups available");
+    throw new Error("No group available");
   }
 
   const now = Date.now();
@@ -527,7 +747,6 @@ export async function saveLink(link) {
     url: normalizeUrl(link.url),
     title: link.title.trim(),
     notes: (link.notes || "").trim(),
-    notesFormat: link.notesFormat || "plain",
     tags: normalizeTags(link.tags),
     favicon: link.favicon || "",
     groupId: group.id,
@@ -535,70 +754,74 @@ export async function saveLink(link) {
     createdAt: link.createdAt || now,
     updatedAt: now
   };
-
   normalized.searchText = buildSearchText(normalized, group.name);
 
-  const { store, done } = await getStore(LINKS_STORE, "readwrite");
-
-  let id;
   if (link.id) {
-    const next = { ...normalized, id: link.id };
-    store.put(next);
-    id = link.id;
+    const index = vault.links.findIndex((item) => item.id === link.id);
+    if (index === -1) {
+      throw new Error("Link not found");
+    }
+    vault.links[index] = {
+      ...vault.links[index],
+      ...normalized,
+      id: link.id
+    };
   } else {
-    id = await requestToPromise(store.add(normalized));
+    vault.links.push({
+      ...normalized,
+      id: vault.counters.linkId
+    });
+    vault.counters.linkId += 1;
   }
 
-  await done;
-  await updateGroup(group.id, {});
+  group.updatedAt = now;
+  const collection = vault.collections.find((item) => item.id === group.collectionId);
+  if (collection) {
+    collection.updatedAt = now;
+  }
 
-  return { ...normalized, id };
+  await persistCachedVault();
 }
 
 export async function deleteLink(id) {
-  const { store, done } = await getStore(LINKS_STORE, "readwrite");
-  store.delete(id);
-  await done;
+  const vault = await requireUnlockedVault();
+  vault.links = vault.links.filter((link) => link.id !== id);
+  await persistCachedVault();
 }
 
 export async function importLinks(links, groupId) {
-  const groups = await getAllGroups();
-  const group = groups.find((entry) => entry.id === Number(groupId)) || groups[0];
+  const vault = await requireUnlockedVault();
+  const group = vault.groups.find((entry) => entry.id === Number(groupId));
   if (!group) {
-    throw new Error("No groups available");
+    throw new Error("No group available");
   }
 
   const now = Date.now();
-  const db = await openDb();
-  const transaction = db.transaction([LINKS_STORE, GROUPS_STORE], "readwrite");
-  const linksStore = transaction.objectStore(LINKS_STORE);
-  const groupsStore = transaction.objectStore(GROUPS_STORE);
-
   links.forEach((link) => {
-      const normalized = {
-        url: normalizeUrl(link.url),
-        title: (link.title || link.url).trim(),
-        notes: (link.notes || "").trim(),
-        notesFormat: link.notesFormat || "plain",
-        tags: normalizeTags(link.tags),
+    const normalized = {
+      id: vault.counters.linkId,
+      url: normalizeUrl(link.url),
+      title: (link.title || link.url).trim(),
+      notes: (link.notes || "").trim(),
+      tags: normalizeTags(link.tags),
       favicon: link.favicon || "",
       groupId: group.id,
       pinned: Boolean(link.pinned),
       createdAt: now,
       updatedAt: now
     };
-
     normalized.searchText = buildSearchText(normalized, group.name);
-    linksStore.add(normalized);
+    vault.links.push(normalized);
+    vault.counters.linkId += 1;
   });
 
-  groupsStore.put({
-    ...group,
-    updatedAt: now
-  });
+  group.updatedAt = now;
+  const collection = vault.collections.find((item) => item.id === group.collectionId);
+  if (collection) {
+    collection.updatedAt = now;
+  }
 
-  await transactionDone(transaction);
-  await updateCollection(group.collectionId, {});
+  await persistCachedVault();
 }
 
 export async function setGroupCollapsed(id, collapsed) {
@@ -606,12 +829,9 @@ export async function setGroupCollapsed(id, collapsed) {
 }
 
 export async function getMeta(key) {
-  const { store } = await getStore(META_STORE);
-  return requestToPromise(store.get(key));
+  return getMetaValue(key);
 }
 
 export async function setMeta(key, value) {
-  const { store, done } = await getStore(META_STORE, "readwrite");
-  store.put({ key, value });
-  await done;
+  return setMetaValue(key, value);
 }

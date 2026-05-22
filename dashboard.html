@@ -25,6 +25,7 @@
         </label>
 
         <div class="topbar-actions">
+          <button id="lockVaultBtn" class="ghost-button hidden">Lock</button>
           <button id="importBackupBtn" class="ghost-button">Import backup</button>
           <button id="exportBackupBtn" class="ghost-button">Export backup</button>
           <button id="saveCurrentTabBtn" class="ghost-button">Save current tab</button>
@@ -53,6 +54,20 @@
         </aside>
 
         <main class="content">
+          <section id="securityGate" class="security-gate hidden">
+            <div class="security-panel">
+              <p class="eyebrow">Encrypted Vault</p>
+              <h2 id="securityTitle">Unlock Session Canvas</h2>
+              <p id="securityMessage" class="hero-meta">
+                Enter your passphrase to decrypt your saved collections.
+              </p>
+              <form id="securityForm" class="security-form">
+                <input id="securityPassphrase" type="password" placeholder="Passphrase" required />
+                <button type="submit" class="primary-button">Continue</button>
+              </form>
+            </div>
+          </section>
+
           <section class="collection-hero">
             <div>
               <p class="eyebrow">Active collection</p>
@@ -114,25 +129,19 @@
         </label>
 
         <label class="field">
-          <span>Notes format</span>
-          <select id="linkNotesFormat" name="notesFormat">
-            <option value="plain">Plain text</option>
-            <option value="markdown">Markdown</option>
-            <option value="html">HTML</option>
-          </select>
-        </label>
-
-        <label class="field">
           <span>Tags</span>
           <input id="linkTags" name="tags" list="tagSuggestions" placeholder="work, design, reference" />
         </label>
 
         <div id="existingTagSuggestions" class="existing-tag-suggestions"></div>
 
-        <label class="field">
+        <div class="field">
           <span>Group</span>
-          <select id="linkGroup" name="groupId"></select>
-        </label>
+          <div class="field-inline">
+            <select id="linkGroup" name="groupId"></select>
+            <button id="linkNewGroupBtn" type="button" class="ghost-button">New group</button>
+          </div>
+        </div>
 
         <label class="checkbox-field">
           <input id="linkPinned" type="checkbox" />

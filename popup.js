@@ -1,9 +1,10 @@
-import { ensureDefaultData, getSnapshot, importLinks, saveLink } from "./db.js";
+import { ensureDefaultData, getSnapshot, getVaultStatus, importLinks, saveLink } from "./db.js";
 
 const els = {
   popupFavicon: document.querySelector("#popupFavicon"),
   popupTitle: document.querySelector("#popupTitle"),
   popupUrl: document.querySelector("#popupUrl"),
+  popupLockMessage: document.querySelector("#popupLockMessage"),
   popupNotes: document.querySelector("#popupNotes"),
   popupTags: document.querySelector("#popupTags"),
   popupGroup: document.querySelector("#popupGroup"),
@@ -15,6 +16,18 @@ const els = {
 let activeTab;
 
 async function loadGroups() {
+  const vaultStatus = await getVaultStatus();
+  if (!vaultStatus.unlocked) {
+    els.popupLockMessage.classList.remove("hidden");
+    els.popupForm.querySelectorAll("textarea, input, select, button[type='submit']").forEach((element) => {
+      if (element !== els.openManagerBtn && element !== els.popupImportBtn) {
+        element.disabled = true;
+      }
+    });
+    els.popupImportBtn.disabled = true;
+    return;
+  }
+
   await ensureDefaultData();
   const collections = await getSnapshot();
   els.popupGroup.innerHTML = "";

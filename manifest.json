@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "A simplified Session Buddy-style link manager with collections, groups, notes, tags, and IndexedDB storage.",
   "permissions": [
-    "tabs"
+    "tabs",
+    "storage"
   ],
   "action": {
     "default_title": "Session Canvas",

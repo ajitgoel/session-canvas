@@ -4,12 +4,18 @@ import {
   deleteCollection,
   deleteGroup,
   deleteLink,
-  getAllTags,
   ensureDefaultData,
+  exportBackupData,
+  getAllTags,
   getSnapshot,
+  getVaultStatus,
+  importBackupData,
   importLinks,
+  lockVault,
   saveLink,
   setGroupCollapsed,
+  setupPassphrase,
+  unlockVault,
   updateCollection,
   updateGroup
 } from "./db.js";
@@ -20,18 +26,29 @@ const state = {
   activeCollectionId: null,
   searchTerm: "",
   selectedTag: "",
-  currentTabCount: 0
+  currentTabCount: 0,
+  resumeLinkDialogAfterGroup: false,
+  vaultConfigured: false,
+  vaultUnlocked: false
 };
 
 const els = {
   searchInput: document.querySelector("#searchInput"),
   saveCurrentTabBtn: document.querySelector("#saveCurrentTabBtn"),
   importWindowBtn: document.querySelector("#importWindowBtn"),
+  importBackupBtn: document.querySelector("#importBackupBtn"),
+  exportBackupBtn: document.querySelector("#exportBackupBtn"),
+  lockVaultBtn: document.querySelector("#lockVaultBtn"),
   addLinkBtn: document.querySelector("#addLinkBtn"),
   thisBrowserBtn: document.querySelector("#thisBrowserBtn"),
   browserTabCount: document.querySelector("#browserTabCount"),
   newCollectionBtn: document.querySelector("#newCollectionBtn"),
   collectionNav: document.querySelector("#collectionNav"),
+  securityGate: document.querySelector("#securityGate"),
+  securityTitle: document.querySelector("#securityTitle"),
+  securityMessage: document.querySelector("#securityMessage"),
+  securityForm: document.querySelector("#securityForm"),
+  securityPassphrase: document.querySelector("#securityPassphrase"),
   heroBadge: document.querySelector("#heroBadge"),
   heroTitle: document.querySelector("#heroTitle"),
   heroMeta: document.querySelector("#heroMeta"),
@@ -52,6 +69,7 @@ const els = {
   tagSuggestions: document.querySelector("#tagSuggestions"),
   existingTagSuggestions: document.querySelector("#existingTagSuggestions"),
   linkGroup: document.querySelector("#linkGroup"),
+  linkNewGroupBtn: document.querySelector("#linkNewGroupBtn"),
   linkPinned: document.querySelector("#linkPinned"),
   collectionDialog: document.querySelector("#collectionDialog"),
   collectionDialogTitle: document.querySelector("#collectionDialogTitle"),
@@ -69,7 +87,8 @@ const els = {
   groupColor: document.querySelector("#groupColor"),
   deleteGroupBtn: document.querySelector("#deleteGroupBtn"),
   groupSectionTemplate: document.querySelector("#groupSectionTemplate"),
-  linkCardTemplate: document.querySelector("#linkCardTemplate")
+  linkCardTemplate: document.querySelector("#linkCardTemplate"),
+  importBackupInput: document.querySelector("#importBackupInput")
 };
 
 function relativeTime(date) {
@@ -149,6 +168,67 @@ function getVisibleGroups(collection) {
   return collection.groups.filter((group) => groupMatchesSearch(group, state.searchTerm));
 }
 
+function escapeHtml(value) {
+  return (value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderMarkdownToHtml(text) {
+  const escaped = escapeHtml(text);
+  const withLinks = escaped.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noreferrer">$1</a>'
+  );
+
+  return withLinks
+    .split(/\n{2,}/)
+    .map((block) => {
+      let html = block.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+      html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+      html = html.replace(/^- (.+)$/gm, "<li>$1</li>");
+      html = html.replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>");
+      html = html.replace(/\n/g, "<br>");
+      return `<p>${html}</p>`;
+    })
+    .join("");
+}
+
+function setVaultUiState() {
+  const locked = !state.vaultUnlocked;
+  els.securityGate.classList.toggle("hidden", !locked);
+  els.lockVaultBtn.classList.toggle("hidden", locked);
+
+  [
+    els.importBackupBtn,
+    els.exportBackupBtn,
+    els.saveCurrentTabBtn,
+    els.importWindowBtn,
+    els.addLinkBtn,
+    els.newCollectionBtn,
+    els.newGroupBtn,
+    els.editCollectionBtn,
+    els.openGroupBtn,
+    els.searchInput
+  ].forEach((element) => {
+    element.disabled = locked;
+  });
+
+  if (!state.vaultConfigured) {
+    els.securityTitle.textContent = "Create your passphrase";
+    els.securityMessage.textContent =
+      "All IndexedDB content will be encrypted at rest. Choose a passphrase to initialize the vault.";
+  } else {
+    els.securityTitle.textContent = "Unlock Session Canvas";
+    els.securityMessage.textContent =
+      "Enter your passphrase to decrypt your saved collections, groups, links, tags, and notes.";
+  }
+}
+
 async function refreshCurrentTabCount() {
   const tabs = await chrome.tabs.query({ currentWindow: true });
   state.currentTabCount = tabs.length;
@@ -156,6 +236,18 @@ async function refreshCurrentTabCount() {
 }
 
 async function refreshData() {
+  const vaultStatus = await getVaultStatus();
+  state.vaultConfigured = vaultStatus.configured;
+  state.vaultUnlocked = vaultStatus.unlocked;
+  setVaultUiState();
+
+  if (!state.vaultUnlocked) {
+    state.collections = [];
+    state.tags = [];
+    render();
+    return;
+  }
+
   await ensureDefaultData();
   const [collections, tags] = await Promise.all([getSnapshot(), getAllTags()]);
   state.collections = collections;
@@ -234,7 +326,7 @@ function renderHero() {
   const activeCollection = getActiveCollection();
   if (!activeCollection) {
     els.heroTitle.textContent = "Collections";
-    els.heroMeta.textContent = "0 groups";
+    els.heroMeta.textContent = state.vaultUnlocked ? "0 groups" : "Vault locked";
     els.heroBadge.style.background = "transparent";
     return;
   }
@@ -248,6 +340,9 @@ function renderHero() {
 
 function renderTagFilters() {
   els.tagFilterChips.innerHTML = "";
+  if (!state.vaultUnlocked) {
+    return;
+  }
 
   const allButton = document.createElement("button");
   allButton.type = "button";
@@ -272,6 +367,20 @@ function renderTagFilters() {
   });
 }
 
+function appendTagToInput(tag) {
+  const currentTags = els.linkTags.value
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!currentTags.some((value) => value.toLowerCase() === tag.toLowerCase())) {
+    currentTags.push(tag);
+  }
+
+  els.linkTags.value = currentTags.join(", ");
+  els.linkTags.focus();
+}
+
 function renderTagSuggestions() {
   els.tagSuggestions.innerHTML = "";
   els.existingTagSuggestions.innerHTML = "";
@@ -290,20 +399,6 @@ function renderTagSuggestions() {
     button.addEventListener("click", () => appendTagToInput(entry.tag));
     els.existingTagSuggestions.append(button);
   });
-}
-
-function appendTagToInput(tag) {
-  const currentTags = els.linkTags.value
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  if (!currentTags.some((value) => value.toLowerCase() === tag.toLowerCase())) {
-    currentTags.push(tag);
-  }
-
-  els.linkTags.value = currentTags.join(", ");
-  els.linkTags.focus();
 }
 
 function createLinkCard(link) {
@@ -329,7 +424,7 @@ function createLinkCard(link) {
   url.textContent = link.url;
 
   if (link.notes) {
-    notes.textContent = link.notes;
+    notes.innerHTML = renderMarkdownToHtml(link.notes);
     notes.classList.remove("hidden");
   }
 
@@ -358,6 +453,11 @@ function createLinkCard(link) {
 
 function renderGroups() {
   els.groupsContainer.innerHTML = "";
+  if (!state.vaultUnlocked) {
+    els.emptyState.classList.add("hidden");
+    return;
+  }
+
   const activeCollection = getActiveCollection();
   const groupsToRender = getVisibleGroups(activeCollection);
   let visibleLinkCount = 0;
@@ -453,6 +553,35 @@ function openLinkDialog(link = null) {
   els.linkDialog.showModal();
 }
 
+function snapshotLinkForm() {
+  return {
+    id: els.linkId.value,
+    title: els.linkTitle.value,
+    url: els.linkUrl.value,
+    notes: els.linkNotes.value,
+    tags: els.linkTags.value,
+    groupId: els.linkGroup.value,
+    pinned: els.linkPinned.checked
+  };
+}
+
+function restoreLinkForm(snapshot) {
+  if (!snapshot) {
+    return;
+  }
+
+  els.linkId.value = snapshot.id || "";
+  els.linkTitle.value = snapshot.title || "";
+  els.linkUrl.value = snapshot.url || "";
+  els.linkNotes.value = snapshot.notes || "";
+  els.linkTags.value = snapshot.tags || "";
+  els.linkPinned.checked = Boolean(snapshot.pinned);
+  populateGroupSelect();
+  if (snapshot.groupId) {
+    els.linkGroup.value = snapshot.groupId;
+  }
+}
+
 function openCollectionDialog(collection = null) {
   els.collectionDialogTitle.textContent = collection ? "Edit collection" : "New collection";
   els.collectionId.value = collection?.id || "";
@@ -528,13 +657,51 @@ async function openVisibleLinks() {
   }
 }
 
+async function exportBackup() {
+  const backup = await exportBackupData();
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const blobUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+  anchor.href = blobUrl;
+  anchor.download = `session-canvas-backup-${stamp}.json`;
+  anchor.click();
+  URL.revokeObjectURL(blobUrl);
+}
+
 function attachEvents() {
   els.searchInput.addEventListener("input", (event) => {
     state.searchTerm = event.target.value.trim();
     render();
   });
 
+  els.securityForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      if (state.vaultConfigured) {
+        await unlockVault(els.securityPassphrase.value);
+      } else {
+        await setupPassphrase(els.securityPassphrase.value);
+      }
+      els.securityPassphrase.value = "";
+      await refreshData();
+    } catch (error) {
+      window.alert(error.message || "Could not unlock vault");
+    }
+  });
+
   els.addLinkBtn.addEventListener("click", () => openLinkDialog());
+  els.linkNewGroupBtn.addEventListener("click", () => {
+    state.resumeLinkDialogAfterGroup = snapshotLinkForm();
+    closeDialog(els.linkDialog);
+    openGroupDialog();
+  });
+  els.importBackupBtn.addEventListener("click", () => els.importBackupInput.click());
+  els.exportBackupBtn.addEventListener("click", exportBackup);
+  els.lockVaultBtn.addEventListener("click", async () => {
+    await lockVault();
+    await refreshData();
+  });
   els.newCollectionBtn.addEventListener("click", () => openCollectionDialog());
   els.newGroupBtn.addEventListener("click", () => openGroupDialog());
   els.editCollectionBtn.addEventListener("click", () => {
@@ -547,6 +714,26 @@ function attachEvents() {
   els.importWindowBtn.addEventListener("click", () => importCurrentWindow());
   els.openGroupBtn.addEventListener("click", openVisibleLinks);
   els.thisBrowserBtn.addEventListener("click", () => importCurrentWindow());
+  els.importBackupInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const shouldImport = window.confirm(
+      "Importing a backup will replace the current saved data. Continue?"
+    );
+    if (!shouldImport) {
+      event.target.value = "";
+      return;
+    }
+
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    await importBackupData(parsed);
+    event.target.value = "";
+    await refreshData();
+  });
 
   els.linkForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -590,23 +777,36 @@ function attachEvents() {
 
   els.groupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    let createdGroupId = null;
     if (els.groupId.value) {
       await updateGroup(Number(els.groupId.value), {
         name: els.groupName.value,
         color: els.groupColor.value,
         collectionId: Number(els.groupCollection.value)
       });
+      createdGroupId = Number(els.groupId.value);
     } else {
-      await createGroup({
+      const group = await createGroup({
         collectionId: Number(els.groupCollection.value),
         name: els.groupName.value,
         color: els.groupColor.value
       });
+      createdGroupId = group.id;
     }
 
     state.activeCollectionId = Number(els.groupCollection.value);
     closeDialog(els.groupDialog);
     await refreshData();
+
+    if (state.resumeLinkDialogAfterGroup) {
+      const snapshot = state.resumeLinkDialogAfterGroup;
+      state.resumeLinkDialogAfterGroup = false;
+      openLinkDialog();
+      restoreLinkForm({
+        ...snapshot,
+        groupId: String(createdGroupId || snapshot.groupId || "")
+      });
+    }
   });
 
   els.deleteCollectionBtn.addEventListener("click", async () => {

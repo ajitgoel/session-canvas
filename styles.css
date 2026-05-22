@@ -319,6 +319,37 @@ button {
   margin-bottom: 12px;
 }
 
+.security-gate {
+  margin-bottom: 16px;
+}
+
+.security-panel {
+  max-width: 520px;
+  padding: 18px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.security-panel h2 {
+  margin: 0 0 8px;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+.security-form {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.security-form input {
+  flex: 1;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
 .tag-filter-chips,
 .existing-tag-suggestions {
   display: flex;
@@ -530,6 +561,27 @@ button {
   font-size: 0.8rem;
 }
 
+.link-notes p,
+.link-notes ul,
+.link-notes ol,
+.link-notes pre {
+  margin: 0 0 4px;
+}
+
+.link-notes code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(17, 24, 39, 0.06);
+  font-size: 0.78rem;
+}
+
+.link-notes pre {
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.05);
+}
+
 .link-actions {
   flex: 0 0 auto;
   gap: 6px;
@@ -592,6 +644,16 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.field-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.field-inline select {
+  flex: 1;
 }
 
 .existing-tag-suggestions {
