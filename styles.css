@@ -589,8 +589,7 @@ button {
   line-height: 1.2;
 }
 
-.group-meta,
-.link-notes {
+.group-meta {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 0.86rem;
@@ -704,32 +703,6 @@ button {
   flex: 0 0 auto;
 }
 
-.link-notes {
-  margin-top: 4px;
-  font-size: 0.8rem;
-}
-
-.link-notes p,
-.link-notes ul,
-.link-notes ol,
-.link-notes pre {
-  margin: 0 0 4px;
-}
-
-.link-notes code {
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: rgba(17, 24, 39, 0.06);
-  font-size: 0.78rem;
-}
-
-.link-notes pre {
-  overflow: auto;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgba(17, 24, 39, 0.05);
-}
-
 .link-actions {
   flex: 0 0 auto;
   gap: 6px;
@@ -741,7 +714,7 @@ button {
 }
 
 .modal {
-  width: min(720px, calc(100vw - 32px));
+  width: min(960px, calc(100vw - 32px));
   border: 0;
   border-radius: 20px;
   padding: 0;
@@ -759,6 +732,46 @@ button {
   flex-direction: column;
   gap: 14px;
   padding: 20px;
+}
+
+.link-dialog-tabs {
+  display: inline-flex;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.05);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.link-dialog-tab {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+}
+
+.link-dialog-tab.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
+}
+
+.link-dialog-panel {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.link-dialog-panel.active {
+  display: flex;
+}
+
+.link-notes-panel {
+  min-height: 560px;
 }
 
 .modal-form.compact {
@@ -818,11 +831,49 @@ button {
 
 .EasyMDEContainer .CodeMirror {
   border: 0;
-  min-height: 160px;
+  min-height: 420px;
 }
 
 .EasyMDEContainer .CodeMirror-scroll {
-  min-height: 160px;
+  min-height: 420px;
+}
+
+.link-notes-panel .field,
+.link-notes-panel .EasyMDEContainer,
+.link-notes-panel .editor-toolbar,
+.link-notes-panel .CodeMirror-scroll {
+  width: 100%;
+}
+
+.link-notes-panel .field {
+  flex: 1;
+}
+
+.link-notes-panel .EasyMDEContainer {
+  min-height: 100%;
+}
+
+.link-notes-panel .EasyMDEContainer.sided--no-fullscreen {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.link-notes-panel .EasyMDEContainer.sided--no-fullscreen .editor-toolbar,
+.link-notes-panel .EasyMDEContainer.sided--no-fullscreen .editor-statusbar {
+  width: 100%;
+}
+
+.link-notes-panel .EasyMDEContainer.sided--no-fullscreen .CodeMirror.CodeMirror-sided,
+.link-notes-panel .EasyMDEContainer.sided--no-fullscreen .editor-preview-active-side {
+  width: 50% !important;
+  flex: 1 1 50%;
+}
+
+.link-notes-panel .CodeMirror,
+.link-notes-panel .CodeMirror-scroll,
+.link-notes-panel .editor-preview-side {
+  min-height: 460px;
 }
 
 .existing-tag-suggestions {

@@ -77,6 +77,10 @@ const els = {
   linkDialog: document.querySelector("#linkDialog"),
   linkDialogTitle: document.querySelector("#linkDialogTitle"),
   linkForm: document.querySelector("#linkForm"),
+  linkDetailsTabBtn: document.querySelector("#linkDetailsTabBtn"),
+  linkNotesTabBtn: document.querySelector("#linkNotesTabBtn"),
+  linkDetailsPanel: document.querySelector("#linkDetailsPanel"),
+  linkNotesPanel: document.querySelector("#linkNotesPanel"),
   linkId: document.querySelector("#linkId"),
   linkTitle: document.querySelector("#linkTitle"),
   linkUrl: document.querySelector("#linkUrl"),
@@ -131,6 +135,18 @@ const els = {
 
 let draftTags = [];
 let notesEditor = null;
+
+function setLinkDialogTab(tab) {
+  const showingNotes = tab === "notes";
+  els.linkDetailsTabBtn.classList.toggle("active", !showingNotes);
+  els.linkNotesTabBtn.classList.toggle("active", showingNotes);
+  els.linkDetailsPanel.classList.toggle("active", !showingNotes);
+  els.linkNotesPanel.classList.toggle("active", showingNotes);
+
+  if (showingNotes && notesEditor) {
+    setTimeout(() => notesEditor.codemirror.refresh(), 0);
+  }
+}
 
 function relativeTime(date) {
   const diffMs = Date.now() - date;
@@ -591,7 +607,6 @@ function createLinkCard(link) {
   const favicon = fragment.querySelector(".link-favicon");
   const title = fragment.querySelector(".link-title");
   const url = fragment.querySelector(".link-url");
-  const notes = fragment.querySelector(".link-notes");
   const tagRow = fragment.querySelector(".tag-row");
   const pinPill = fragment.querySelector(".pin-pill");
 
@@ -606,11 +621,6 @@ function createLinkCard(link) {
   title.textContent = link.title || link.url;
   url.href = link.url;
   url.textContent = link.url;
-
-  if (link.notes) {
-    notes.innerHTML = renderMarkdownToHtml(link.notes);
-    notes.classList.remove("hidden");
-  }
 
   if (link.pinned) {
     pinPill.classList.remove("hidden");
@@ -758,6 +768,7 @@ function openLinkDialog(link = null) {
   } else {
     els.linkNotes.value = link?.notes || "";
   }
+  setLinkDialogTab("details");
   draftTags = [...(link?.tags || [])];
   els.linkPinned.checked = Boolean(link?.pinned);
   populateGroupSelect();
@@ -1130,6 +1141,9 @@ async function syncIfEnabled(reason) {
 }
 
 function attachEvents() {
+  els.linkDetailsTabBtn.addEventListener("click", () => setLinkDialogTab("details"));
+  els.linkNotesTabBtn.addEventListener("click", () => setLinkDialogTab("notes"));
+
   els.collectionsTabBtn.addEventListener("click", () => {
     state.activeView = "collections";
     renderView();

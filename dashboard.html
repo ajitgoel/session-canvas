@@ -195,42 +195,51 @@
 
         <input type="hidden" id="linkId" />
 
-        <label class="field">
-          <span>Title</span>
-          <input id="linkTitle" name="title" required />
-        </label>
-
-        <label class="field">
-          <span>URL</span>
-          <input id="linkUrl" name="url" type="text" inputmode="url" placeholder="example.com" required />
-        </label>
-
-        <label class="field">
-          <span>Notes</span>
-          <textarea id="linkNotes" name="notes" rows="4"></textarea>
-        </label>
-
-        <label class="field">
-          <span>Tags</span>
-          <input id="linkTagInput" name="tagInput" list="tagSuggestions" placeholder="Type a tag and press Enter" />
-        </label>
-
-        <div id="selectedTags" class="selected-tags"></div>
-        <div id="existingTagSuggestions" class="existing-tag-suggestions"></div>
-
-        <div class="field">
-          <span>Group</span>
-          <div class="field-inline">
-            <input id="linkGroupInput" name="groupName" list="groupSuggestions" placeholder="Type or select a group" />
-          </div>
+        <div class="link-dialog-tabs">
+          <button id="linkDetailsTabBtn" class="link-dialog-tab active" type="button">Details</button>
+          <button id="linkNotesTabBtn" class="link-dialog-tab" type="button">Notes</button>
         </div>
 
-        <div id="existingGroupSuggestions" class="existing-tag-suggestions"></div>
+        <section id="linkDetailsPanel" class="link-dialog-panel active">
+          <label class="field">
+            <span>Title</span>
+            <input id="linkTitle" name="title" required />
+          </label>
 
-        <label class="checkbox-field">
-          <input id="linkPinned" type="checkbox" />
-          <span>Pin this link</span>
-        </label>
+          <label class="field">
+            <span>URL</span>
+            <input id="linkUrl" name="url" type="text" inputmode="url" placeholder="example.com" required />
+          </label>
+
+          <label class="field">
+            <span>Tags</span>
+            <input id="linkTagInput" name="tagInput" list="tagSuggestions" placeholder="Type a tag and press Enter" />
+          </label>
+
+          <div id="selectedTags" class="selected-tags"></div>
+          <div id="existingTagSuggestions" class="existing-tag-suggestions"></div>
+
+          <div class="field">
+            <span>Group</span>
+            <div class="field-inline">
+              <input id="linkGroupInput" name="groupName" list="groupSuggestions" placeholder="Type or select a group" />
+            </div>
+          </div>
+
+          <div id="existingGroupSuggestions" class="existing-tag-suggestions"></div>
+
+          <label class="checkbox-field">
+            <input id="linkPinned" type="checkbox" />
+            <span>Pin this link</span>
+          </label>
+        </section>
+
+        <section id="linkNotesPanel" class="link-dialog-panel link-notes-panel">
+          <label class="field">
+            <span>Notes</span>
+            <textarea id="linkNotes" name="notes" rows="4"></textarea>
+          </label>
+        </section>
 
         <div class="modal-actions">
           <button type="button" class="ghost-button" data-close-dialog="linkDialog">Cancel</button>
@@ -373,7 +382,6 @@
               <div class="tag-row"></div>
               <span class="pin-pill hidden">Pinned</span>
             </div>
-            <div class="link-notes hidden"></div>
           </div>
         </div>
         <div class="link-actions">
