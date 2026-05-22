@@ -351,7 +351,8 @@ button {
 }
 
 .tag-filter-chips,
-.existing-tag-suggestions {
+.existing-tag-suggestions,
+.selected-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -362,6 +363,16 @@ button {
   border: 1px solid rgba(17, 24, 39, 0.09);
   background: rgba(255, 255, 255, 0.82);
   color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  line-height: 1;
+}
+
+.selected-tag-chip {
+  border: 1px solid rgba(12, 123, 220, 0.16);
+  background: rgba(12, 123, 220, 0.1);
+  color: var(--accent-deep);
   border-radius: 999px;
   padding: 5px 9px;
   font-size: 0.76rem;
@@ -654,6 +665,28 @@ button {
 
 .field-inline select {
   flex: 1;
+}
+
+.markdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toolbar-button {
+  border: 1px solid rgba(17, 24, 39, 0.09);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  line-height: 1;
+}
+
+.toolbar-button:hover {
+  background: rgba(12, 123, 220, 0.1);
+  color: var(--accent-deep);
+  border-color: rgba(12, 123, 220, 0.18);
 }
 
 .existing-tag-suggestions {

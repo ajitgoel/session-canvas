@@ -10,7 +10,7 @@
     <section class="popup-panel">
       <div class="popup-header">
         <div>
-          <p class="eyebrow">Quick save</p>
+          <p class="eyebrow">Current tab</p>
           <h2>Session Canvas</h2>
         </div>
         <button id="openManagerBtn" class="ghost-button">Open manager</button>
@@ -24,19 +24,15 @@
         </div>
       </div>
 
-      <form id="popupForm" class="popup-form">
-        <p id="popupLockMessage" class="hero-meta hidden">
-          Unlock the vault in the manager before saving from the popup.
+      <div class="popup-form">
+        <p class="hero-meta">
+          Save this tab using the full manager so the same add-link interface, encryption state, tags, notes, and group creation flow are always used.
         </p>
-        <textarea id="popupNotes" rows="3" placeholder="Notes"></textarea>
-        <input id="popupTags" placeholder="Tags: work, ideas, reading" />
-        <select id="popupGroup"></select>
 
         <div class="popup-footer">
-          <button type="submit" class="primary-button">Save this tab</button>
-          <button id="popupImportBtn" type="button" class="ghost-button">Import window</button>
+          <button id="saveInManagerBtn" type="button" class="primary-button">Save in manager</button>
         </div>
-      </form>
+      </div>
     </section>
 
     <script type="module" src="popup.js"></script>

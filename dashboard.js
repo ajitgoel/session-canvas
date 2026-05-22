@@ -27,7 +27,7 @@ const state = {
   searchTerm: "",
   selectedTag: "",
   currentTabCount: 0,
-  resumeLinkDialogAfterGroup: false,
+  pendingCompose: null,
   vaultConfigured: false,
   vaultUnlocked: false
 };
@@ -65,11 +65,13 @@ const els = {
   linkTitle: document.querySelector("#linkTitle"),
   linkUrl: document.querySelector("#linkUrl"),
   linkNotes: document.querySelector("#linkNotes"),
-  linkTags: document.querySelector("#linkTags"),
+  linkTagInput: document.querySelector("#linkTagInput"),
+  selectedTags: document.querySelector("#selectedTags"),
   tagSuggestions: document.querySelector("#tagSuggestions"),
   existingTagSuggestions: document.querySelector("#existingTagSuggestions"),
-  linkGroup: document.querySelector("#linkGroup"),
-  linkNewGroupBtn: document.querySelector("#linkNewGroupBtn"),
+  linkGroupInput: document.querySelector("#linkGroupInput"),
+  groupSuggestions: document.querySelector("#groupSuggestions"),
+  existingGroupSuggestions: document.querySelector("#existingGroupSuggestions"),
   linkPinned: document.querySelector("#linkPinned"),
   collectionDialog: document.querySelector("#collectionDialog"),
   collectionDialogTitle: document.querySelector("#collectionDialogTitle"),
@@ -90,6 +92,8 @@ const els = {
   linkCardTemplate: document.querySelector("#linkCardTemplate"),
   importBackupInput: document.querySelector("#importBackupInput")
 };
+
+let draftTags = [];
 
 function relativeTime(date) {
   const diffMs = Date.now() - date;
@@ -268,21 +272,30 @@ async function refreshData() {
   }
 
   render();
+
+  if (state.pendingCompose) {
+    const compose = state.pendingCompose;
+    state.pendingCompose = null;
+    openLinkDialog(compose);
+  }
 }
 
 function populateGroupSelect() {
   const activeCollection = getActiveCollection();
-  const previous = Number(els.linkGroup.value);
-  els.linkGroup.innerHTML = "";
-
   const groups = activeCollection?.groups || [];
-  groups.forEach((group, index) => {
+  const previous = els.linkGroupInput.value.trim();
+  els.groupSuggestions.innerHTML = "";
+
+  groups.forEach((group) => {
     const option = document.createElement("option");
-    option.value = String(group.id);
+    option.value = group.name;
     option.textContent = group.name;
-    option.selected = previous ? group.id === previous : index === 0;
-    els.linkGroup.append(option);
+    els.groupSuggestions.append(option);
   });
+
+  if (!previous && groups[0]) {
+    els.linkGroupInput.value = groups[0].name;
+  }
 }
 
 function populateCollectionSelect() {
@@ -368,17 +381,33 @@ function renderTagFilters() {
 }
 
 function appendTagToInput(tag) {
-  const currentTags = els.linkTags.value
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  if (!currentTags.some((value) => value.toLowerCase() === tag.toLowerCase())) {
-    currentTags.push(tag);
+  const normalized = tag.trim();
+  if (!normalized) {
+    return;
   }
+  if (!draftTags.some((value) => value.toLowerCase() === normalized.toLowerCase())) {
+    draftTags.push(normalized);
+  }
+  renderSelectedTags();
+  els.linkTagInput.value = "";
+  els.linkTagInput.focus();
+}
 
-  els.linkTags.value = currentTags.join(", ");
-  els.linkTags.focus();
+function removeDraftTag(tag) {
+  draftTags = draftTags.filter((value) => value.toLowerCase() !== tag.toLowerCase());
+  renderSelectedTags();
+}
+
+function renderSelectedTags() {
+  els.selectedTags.innerHTML = "";
+  draftTags.forEach((tag) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "selected-tag-chip";
+    chip.textContent = `${tag} ×`;
+    chip.addEventListener("click", () => removeDraftTag(tag));
+    els.selectedTags.append(chip);
+  });
 }
 
 function renderTagSuggestions() {
@@ -398,6 +427,26 @@ function renderTagSuggestions() {
     button.textContent = entry.tag;
     button.addEventListener("click", () => appendTagToInput(entry.tag));
     els.existingTagSuggestions.append(button);
+  });
+}
+
+function renderGroupSuggestions() {
+  els.existingGroupSuggestions.innerHTML = "";
+  const activeCollection = getActiveCollection();
+  if (!activeCollection) {
+    return;
+  }
+
+  activeCollection.groups.forEach((group) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "existing-tag-chip";
+    button.textContent = group.name;
+    button.addEventListener("click", () => {
+      els.linkGroupInput.value = group.name;
+      els.linkGroupInput.focus();
+    });
+    els.existingGroupSuggestions.append(button);
   });
 }
 
@@ -530,6 +579,8 @@ function render() {
   renderHero();
   renderTagFilters();
   renderTagSuggestions();
+  renderGroupSuggestions();
+  renderSelectedTags();
   renderGroups();
 }
 
@@ -539,47 +590,27 @@ function closeDialog(dialog) {
 
 function openLinkDialog(link = null) {
   const activeCollection = getActiveCollection();
-  const fallbackGroupId = activeCollection?.groups[0]?.id || "";
+  const fallbackGroupName = activeCollection?.groups[0]?.name || "";
   els.linkDialogTitle.textContent = link ? "Edit link" : "Add link";
   els.linkId.value = link?.id || "";
   els.linkTitle.value = link?.title || "";
   els.linkUrl.value = link?.url || "";
   els.linkNotes.value = link?.notes || "";
-  els.linkTags.value = (link?.tags || []).join(", ");
+  draftTags = [...(link?.tags || [])];
   els.linkPinned.checked = Boolean(link?.pinned);
   populateGroupSelect();
   renderTagSuggestions();
-  els.linkGroup.value = String(link?.groupId || fallbackGroupId);
+  renderGroupSuggestions();
+  renderSelectedTags();
+  if (link?.groupName) {
+    els.linkGroupInput.value = link.groupName;
+  } else if (link?.groupId) {
+    const group = activeCollection?.groups.find((entry) => entry.id === link.groupId);
+    els.linkGroupInput.value = group?.name || fallbackGroupName;
+  } else {
+    els.linkGroupInput.value = fallbackGroupName;
+  }
   els.linkDialog.showModal();
-}
-
-function snapshotLinkForm() {
-  return {
-    id: els.linkId.value,
-    title: els.linkTitle.value,
-    url: els.linkUrl.value,
-    notes: els.linkNotes.value,
-    tags: els.linkTags.value,
-    groupId: els.linkGroup.value,
-    pinned: els.linkPinned.checked
-  };
-}
-
-function restoreLinkForm(snapshot) {
-  if (!snapshot) {
-    return;
-  }
-
-  els.linkId.value = snapshot.id || "";
-  els.linkTitle.value = snapshot.title || "";
-  els.linkUrl.value = snapshot.url || "";
-  els.linkNotes.value = snapshot.notes || "";
-  els.linkTags.value = snapshot.tags || "";
-  els.linkPinned.checked = Boolean(snapshot.pinned);
-  populateGroupSelect();
-  if (snapshot.groupId) {
-    els.linkGroup.value = snapshot.groupId;
-  }
 }
 
 function openCollectionDialog(collection = null) {
@@ -600,6 +631,62 @@ function openGroupDialog(group = null) {
   els.groupCollection.value = String(group?.collectionId || state.activeCollectionId || "");
   els.deleteGroupBtn.classList.toggle("hidden", !group);
   els.groupDialog.showModal();
+}
+
+function randomGroupColor() {
+  const palette = ["#efb907", "#1c86e2", "#ef6c3b", "#2f9d67", "#8c61ff", "#cc5577", "#168aad"];
+  return palette[Math.floor(Math.random() * palette.length)];
+}
+
+function applyMarkdown(control) {
+  const textarea = els.linkNotes;
+  const start = textarea.selectionStart ?? 0;
+  const end = textarea.selectionEnd ?? 0;
+  const selected = textarea.value.slice(start, end);
+  let replacement = selected;
+
+  if (control === "bold") {
+    replacement = `**${selected || "bold text"}**`;
+  } else if (control === "italic") {
+    replacement = `*${selected || "italic text"}*`;
+  } else if (control === "link") {
+    replacement = `[${selected || "link text"}](https://example.com)`;
+  } else if (control === "code") {
+    replacement = `\`${selected || "code"}\``;
+  } else if (control === "bullet") {
+    replacement = `- ${selected || "list item"}`;
+  } else if (control === "heading") {
+    replacement = `## ${selected || "Heading"}`;
+  }
+
+  textarea.setRangeText(replacement, start, end, "end");
+  textarea.focus();
+}
+
+async function resolveGroupIdFromInput() {
+  const activeCollection = getActiveCollection();
+  const typedName = els.linkGroupInput.value.trim();
+
+  if (!activeCollection) {
+    throw new Error("No active collection");
+  }
+  if (!typedName) {
+    throw new Error("Please choose or type a group");
+  }
+
+  const existing = activeCollection.groups.find(
+    (group) => group.name.trim().toLowerCase() === typedName.toLowerCase()
+  );
+  if (existing) {
+    return existing.id;
+  }
+
+  const created = await createGroup({
+    collectionId: activeCollection.id,
+    name: typedName,
+    color: randomGroupColor()
+  });
+  return created.id;
 }
 
 async function saveCurrentTabToGroup(groupId = null) {
@@ -675,6 +762,23 @@ function attachEvents() {
     render();
   });
 
+  document.querySelectorAll("[data-md]").forEach((button) => {
+    button.addEventListener("click", () => applyMarkdown(button.getAttribute("data-md")));
+  });
+
+  els.linkTagInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      appendTagToInput(els.linkTagInput.value);
+    } else if (event.key === "Backspace" && !els.linkTagInput.value && draftTags.length > 0) {
+      removeDraftTag(draftTags[draftTags.length - 1]);
+    }
+  });
+
+  els.linkTagInput.addEventListener("blur", () => {
+    appendTagToInput(els.linkTagInput.value);
+  });
+
   els.securityForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -691,11 +795,6 @@ function attachEvents() {
   });
 
   els.addLinkBtn.addEventListener("click", () => openLinkDialog());
-  els.linkNewGroupBtn.addEventListener("click", () => {
-    state.resumeLinkDialogAfterGroup = snapshotLinkForm();
-    closeDialog(els.linkDialog);
-    openGroupDialog();
-  });
   els.importBackupBtn.addEventListener("click", () => els.importBackupInput.click());
   els.exportBackupBtn.addEventListener("click", exportBackup);
   els.lockVaultBtn.addEventListener("click", async () => {
@@ -737,15 +836,17 @@ function attachEvents() {
 
   els.linkForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const groupId = await resolveGroupIdFromInput();
     await saveLink({
       id: els.linkId.value ? Number(els.linkId.value) : undefined,
       title: els.linkTitle.value,
       url: els.linkUrl.value,
       notes: els.linkNotes.value,
-      tags: els.linkTags.value,
-      groupId: Number(els.linkGroup.value),
+      tags: draftTags,
+      groupId,
       pinned: els.linkPinned.checked
     });
+    draftTags = [];
     closeDialog(els.linkDialog);
     await refreshData();
   });
@@ -777,36 +878,23 @@ function attachEvents() {
 
   els.groupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    let createdGroupId = null;
     if (els.groupId.value) {
       await updateGroup(Number(els.groupId.value), {
         name: els.groupName.value,
         color: els.groupColor.value,
         collectionId: Number(els.groupCollection.value)
       });
-      createdGroupId = Number(els.groupId.value);
     } else {
-      const group = await createGroup({
+      await createGroup({
         collectionId: Number(els.groupCollection.value),
         name: els.groupName.value,
         color: els.groupColor.value
       });
-      createdGroupId = group.id;
     }
 
     state.activeCollectionId = Number(els.groupCollection.value);
     closeDialog(els.groupDialog);
     await refreshData();
-
-    if (state.resumeLinkDialogAfterGroup) {
-      const snapshot = state.resumeLinkDialogAfterGroup;
-      state.resumeLinkDialogAfterGroup = false;
-      openLinkDialog();
-      restoreLinkForm({
-        ...snapshot,
-        groupId: String(createdGroupId || snapshot.groupId || "")
-      });
-    }
   });
 
   els.deleteCollectionBtn.addEventListener("click", async () => {
@@ -838,6 +926,17 @@ function attachEvents() {
 }
 
 async function init() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("compose") === "1") {
+    state.pendingCompose = {
+      title: params.get("title") || "",
+      url: params.get("url") || "",
+      notes: "",
+      tags: [],
+      pinned: false
+    };
+    window.history.replaceState({}, "", window.location.pathname);
+  }
   attachEvents();
   await refreshCurrentTabCount();
   await refreshData();

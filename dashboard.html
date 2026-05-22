@@ -125,23 +125,33 @@
 
         <label class="field">
           <span>Notes</span>
+          <div class="markdown-toolbar">
+            <button type="button" class="toolbar-button" data-md="bold">Bold</button>
+            <button type="button" class="toolbar-button" data-md="italic">Italic</button>
+            <button type="button" class="toolbar-button" data-md="link">Link</button>
+            <button type="button" class="toolbar-button" data-md="code">Code</button>
+            <button type="button" class="toolbar-button" data-md="bullet">Bullet</button>
+            <button type="button" class="toolbar-button" data-md="heading">Heading</button>
+          </div>
           <textarea id="linkNotes" name="notes" rows="4"></textarea>
         </label>
 
         <label class="field">
           <span>Tags</span>
-          <input id="linkTags" name="tags" list="tagSuggestions" placeholder="work, design, reference" />
+          <input id="linkTagInput" name="tagInput" list="tagSuggestions" placeholder="Type a tag and press Enter" />
         </label>
 
+        <div id="selectedTags" class="selected-tags"></div>
         <div id="existingTagSuggestions" class="existing-tag-suggestions"></div>
 
         <div class="field">
           <span>Group</span>
           <div class="field-inline">
-            <select id="linkGroup" name="groupId"></select>
-            <button id="linkNewGroupBtn" type="button" class="ghost-button">New group</button>
+            <input id="linkGroupInput" name="groupName" list="groupSuggestions" placeholder="Type or select a group" />
           </div>
         </div>
+
+        <div id="existingGroupSuggestions" class="existing-tag-suggestions"></div>
 
         <label class="checkbox-field">
           <input id="linkPinned" type="checkbox" />
@@ -156,6 +166,7 @@
     </dialog>
 
     <datalist id="tagSuggestions"></datalist>
+    <datalist id="groupSuggestions"></datalist>
 
     <dialog id="collectionDialog" class="modal">
       <form id="collectionForm" class="modal-form compact" method="dialog">
