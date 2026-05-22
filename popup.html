@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Session Canvas</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="popup-body">
+    <section class="popup-panel">
+      <div class="popup-header">
+        <div>
+          <p class="eyebrow">Quick save</p>
+          <h2>Session Canvas</h2>
+        </div>
+        <button id="openManagerBtn" class="ghost-button">Open manager</button>
+      </div>
+
+      <div class="popup-current">
+        <img id="popupFavicon" alt="" />
+        <div>
+          <h3 id="popupTitle"></h3>
+          <p id="popupUrl"></p>
+        </div>
+      </div>
+
+      <form id="popupForm" class="popup-form">
+        <input id="popupDescription" placeholder="Short description" />
+        <textarea id="popupNotes" rows="3" placeholder="Notes"></textarea>
+        <input id="popupTags" placeholder="Tags: work, ideas, reading" />
+        <select id="popupGroup"></select>
+
+        <div class="popup-footer">
+          <button type="submit" class="primary-button">Save this tab</button>
+          <button id="popupImportBtn" type="button" class="ghost-button">Import window</button>
+        </div>
+      </form>
+    </section>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

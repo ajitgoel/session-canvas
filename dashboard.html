@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Session Canvas</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="dashboard-shell">
+    <div class="app-chrome">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark">S</div>
+          <div>
+            <p class="eyebrow">Collections</p>
+            <h1>Session Canvas</h1>
+          </div>
+        </div>
+
+        <label class="searchbar">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10.5 4a6.5 6.5 0 1 0 4.03 11.6l4.44 4.43 1.41-1.41-4.43-4.44A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"></path>
+          </svg>
+          <input id="searchInput" type="search" placeholder="Search tabs and collections" />
+        </label>
+
+        <div class="topbar-actions">
+          <button id="saveCurrentTabBtn" class="ghost-button">Save current tab</button>
+          <button id="importWindowBtn" class="ghost-button">Import window</button>
+          <button id="addLinkBtn" class="primary-button">New link</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="sidebar">
+          <section class="sidebar-panel">
+            <p class="sidebar-heading">Tabs</p>
+            <button id="thisBrowserBtn" class="browser-card">
+              <span>This browser</span>
+              <small id="browserTabCount">0 tabs</small>
+            </button>
+          </section>
+
+          <section class="sidebar-panel sidebar-collections">
+            <div class="sidebar-heading-row">
+              <p class="sidebar-heading">Collections</p>
+              <button id="newCollectionBtn" class="icon-button" aria-label="Create collection">+</button>
+            </div>
+            <div id="collectionNav" class="group-nav"></div>
+          </section>
+        </aside>
+
+        <main class="content">
+          <section class="collection-hero">
+            <div>
+              <p class="eyebrow">Active collection</p>
+              <div class="hero-title-row">
+                <div id="heroBadge" class="hero-badge"></div>
+                <div>
+                  <h2 id="heroTitle">All collections</h2>
+                  <p id="heroMeta" class="hero-meta"></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-actions">
+              <button id="newGroupBtn" class="ghost-button">New group</button>
+              <button id="editCollectionBtn" class="ghost-button">Edit collection</button>
+              <button id="openGroupBtn" class="ghost-button">Open visible</button>
+            </div>
+          </section>
+
+          <section id="emptyState" class="empty-state hidden">
+            <h3>No groups yet</h3>
+            <p>Create a group in this collection, then save links with names, tags, notes, and URLs.</p>
+          </section>
+
+          <section id="groupsContainer" class="groups-container"></section>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="linkDialog" class="modal">
+      <form id="linkForm" class="modal-form" method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Entry</p>
+            <h3 id="linkDialogTitle">Add link</h3>
+          </div>
+          <button type="button" class="close-button" data-close-dialog="linkDialog">Close</button>
+        </div>
+
+        <input type="hidden" id="linkId" />
+
+        <label class="field">
+          <span>Title</span>
+          <input id="linkTitle" name="title" required />
+        </label>
+
+        <label class="field">
+          <span>URL</span>
+          <input id="linkUrl" name="url" type="url" required />
+        </label>
+
+        <label class="field">
+          <span>Short description</span>
+          <input id="linkDescription" name="description" maxlength="140" />
+        </label>
+
+        <label class="field">
+          <span>Notes</span>
+          <textarea id="linkNotes" name="notes" rows="4"></textarea>
+        </label>
+
+        <label class="field">
+          <span>Tags</span>
+          <input id="linkTags" name="tags" placeholder="work, design, reference" />
+        </label>
+
+        <label class="field">
+          <span>Group</span>
+          <select id="linkGroup" name="groupId"></select>
+        </label>
+
+        <label class="checkbox-field">
+          <input id="linkPinned" type="checkbox" />
+          <span>Pin this link</span>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" class="ghost-button" data-close-dialog="linkDialog">Cancel</button>
+          <button type="submit" class="primary-button">Save link</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="collectionDialog" class="modal">
+      <form id="collectionForm" class="modal-form compact" method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Collection</p>
+            <h3 id="collectionDialogTitle">New collection</h3>
+          </div>
+          <button type="button" class="close-button" data-close-dialog="collectionDialog">Close</button>
+        </div>
+
+        <input type="hidden" id="collectionId" />
+
+        <label class="field">
+          <span>Name</span>
+          <input id="collectionName" required />
+        </label>
+
+        <label class="field">
+          <span>Accent color</span>
+          <input id="collectionColor" type="color" value="#efb907" />
+        </label>
+
+        <div class="modal-actions spread">
+          <button type="button" id="deleteCollectionBtn" class="danger-button hidden">Delete collection</button>
+          <div class="modal-actions-inline">
+            <button type="button" class="ghost-button" data-close-dialog="collectionDialog">Cancel</button>
+            <button type="submit" class="primary-button">Save collection</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="groupDialog" class="modal">
+      <form id="groupForm" class="modal-form compact" method="dialog">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Group</p>
+            <h3 id="groupDialogTitle">New group</h3>
+          </div>
+          <button type="button" class="close-button" data-close-dialog="groupDialog">Close</button>
+        </div>
+
+        <input type="hidden" id="groupId" />
+
+        <label class="field">
+          <span>Name</span>
+          <input id="groupName" required />
+        </label>
+
+        <label class="field">
+          <span>Collection</span>
+          <select id="groupCollection"></select>
+        </label>
+
+        <label class="field">
+          <span>Accent color</span>
+          <input id="groupColor" type="color" value="#efb907" />
+        </label>
+
+        <div class="modal-actions spread">
+          <button type="button" id="deleteGroupBtn" class="danger-button hidden">Delete group</button>
+          <div class="modal-actions-inline">
+            <button type="button" class="ghost-button" data-close-dialog="groupDialog">Cancel</button>
+            <button type="submit" class="primary-button">Save group</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="groupSectionTemplate">
+      <section class="group-section">
+        <button class="group-header" type="button">
+          <div class="group-header-left">
+            <span class="collapse-chevron">▾</span>
+            <span class="folder-icon"></span>
+            <div>
+              <h3 class="group-title"></h3>
+              <p class="group-meta"></p>
+            </div>
+          </div>
+          <div class="group-header-actions"></div>
+        </button>
+        <div class="group-links"></div>
+      </section>
+    </template>
+
+    <template id="linkCardTemplate">
+      <article class="link-card">
+        <div class="link-primary">
+          <img class="link-favicon" alt="" />
+          <div class="link-copy">
+            <div class="link-title-row">
+              <h4 class="link-title"></h4>
+              <span class="pin-pill hidden">Pinned</span>
+            </div>
+            <p class="link-description"></p>
+            <a class="link-url" target="_blank" rel="noreferrer"></a>
+            <p class="link-notes hidden"></p>
+            <div class="tag-row"></div>
+          </div>
+        </div>
+        <div class="link-actions">
+          <button class="link-action" data-action="edit">Edit</button>
+          <button class="link-action" data-action="open">Open</button>
+          <button class="link-action danger" data-action="delete">Delete</button>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="dashboard.js"></script>
+  </body>
+</html>

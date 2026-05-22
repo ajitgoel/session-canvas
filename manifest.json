@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Session Canvas",
+  "version": "1.0.0",
+  "description": "A simplified Session Buddy-style link manager with groups, notes, tags, and IndexedDB storage.",
+  "permissions": [
+    "tabs"
+  ],
+  "action": {
+    "default_title": "Session Canvas",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "dashboard.html",
+    "open_in_tab": true
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "styles.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
