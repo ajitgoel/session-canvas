@@ -186,7 +186,6 @@ button {
 .danger-button:hover,
 .icon-button:hover,
 .link-action:hover,
-.browser-card:hover,
 .group-nav-item:hover,
 .group-header:hover,
 .link-card:hover {
@@ -216,7 +215,6 @@ button {
   letter-spacing: 0.04em;
 }
 
-.browser-card,
 .group-nav-item {
   width: 100%;
   text-align: left;
@@ -228,19 +226,11 @@ button {
   border: 1px solid rgba(17, 24, 39, 0.06);
 }
 
-.browser-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.browser-card span,
 .group-nav-item-title {
   font-size: 0.98rem;
   font-weight: 700;
 }
 
-.browser-card small,
 .group-nav-item small {
   color: var(--muted);
   font-size: 0.82rem;
@@ -313,6 +303,7 @@ button {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 0.9rem;
+  display: none;
 }
 
 .tag-filter-bar {
@@ -462,6 +453,10 @@ button {
   color: var(--muted);
   font-size: 0.86rem;
   line-height: 1.35;
+}
+
+.group-meta {
+  display: none;
 }
 
 .group-links {
@@ -667,26 +662,25 @@ button {
   flex: 1;
 }
 
-.markdown-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.EasyMDEContainer {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background: #fff;
 }
 
-.toolbar-button {
-  border: 1px solid rgba(17, 24, 39, 0.09);
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--muted);
-  border-radius: 999px;
-  padding: 5px 9px;
-  font-size: 0.76rem;
-  line-height: 1;
+.EasyMDEContainer .editor-toolbar {
+  border: 0;
+  border-bottom: 1px solid var(--line);
 }
 
-.toolbar-button:hover {
-  background: rgba(12, 123, 220, 0.1);
-  color: var(--accent-deep);
-  border-color: rgba(12, 123, 220, 0.18);
+.EasyMDEContainer .CodeMirror {
+  border: 0;
+  min-height: 160px;
+}
+
+.EasyMDEContainer .CodeMirror-scroll {
+  min-height: 160px;
 }
 
 .existing-tag-suggestions {

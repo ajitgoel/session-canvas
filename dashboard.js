@@ -40,8 +40,6 @@ const els = {
   exportBackupBtn: document.querySelector("#exportBackupBtn"),
   lockVaultBtn: document.querySelector("#lockVaultBtn"),
   addLinkBtn: document.querySelector("#addLinkBtn"),
-  thisBrowserBtn: document.querySelector("#thisBrowserBtn"),
-  browserTabCount: document.querySelector("#browserTabCount"),
   newCollectionBtn: document.querySelector("#newCollectionBtn"),
   collectionNav: document.querySelector("#collectionNav"),
   securityGate: document.querySelector("#securityGate"),
@@ -55,6 +53,7 @@ const els = {
   tagFilterChips: document.querySelector("#tagFilterChips"),
   newGroupBtn: document.querySelector("#newGroupBtn"),
   editCollectionBtn: document.querySelector("#editCollectionBtn"),
+  deleteCollectionQuickBtn: document.querySelector("#deleteCollectionQuickBtn"),
   openGroupBtn: document.querySelector("#openGroupBtn"),
   groupsContainer: document.querySelector("#groupsContainer"),
   emptyState: document.querySelector("#emptyState"),
@@ -94,6 +93,7 @@ const els = {
 };
 
 let draftTags = [];
+let notesEditor = null;
 
 function relativeTime(date) {
   const diffMs = Date.now() - date;
@@ -236,7 +236,6 @@ function setVaultUiState() {
 async function refreshCurrentTabCount() {
   const tabs = await chrome.tabs.query({ currentWindow: true });
   state.currentTabCount = tabs.length;
-  els.browserTabCount.textContent = `${tabs.length} tab${tabs.length === 1 ? "" : "s"}`;
 }
 
 async function refreshData() {
@@ -322,7 +321,6 @@ function renderNav() {
       <span class="group-dot" style="background:${collection.color}"></span>
       <div>
         <div class="group-nav-item-title">${collection.name}</div>
-        <small>${relativeTime(collection.updatedAt)}</small>
       </div>
     `;
 
@@ -339,16 +337,16 @@ function renderHero() {
   const activeCollection = getActiveCollection();
   if (!activeCollection) {
     els.heroTitle.textContent = "Collections";
-    els.heroMeta.textContent = state.vaultUnlocked ? "0 groups" : "Vault locked";
+    els.heroMeta.textContent = "";
     els.heroBadge.style.background = "transparent";
+    els.deleteCollectionQuickBtn.disabled = true;
     return;
   }
 
-  const visibleGroups = getVisibleGroups(activeCollection);
-  const visibleLinkCount = visibleGroups.reduce((count, group) => count + filterGroupLinks(group).length, 0);
   els.heroTitle.textContent = activeCollection.name;
-  els.heroMeta.textContent = `${visibleGroups.length} group${visibleGroups.length === 1 ? "" : "s"} · ${visibleLinkCount} link${visibleLinkCount === 1 ? "" : "s"} · ${relativeTime(activeCollection.updatedAt)}`;
+  els.heroMeta.textContent = "";
   els.heroBadge.style.background = activeCollection.color;
+  els.deleteCollectionQuickBtn.disabled = false;
 }
 
 function renderTagFilters() {
@@ -528,7 +526,7 @@ function renderGroups() {
     section.dataset.groupId = String(group.id);
     section.classList.toggle("collapsed", Boolean(group.collapsed));
     title.textContent = group.name;
-    meta.textContent = `${visibleLinks.length} link${visibleLinks.length === 1 ? "" : "s"} · ${relativeTime(group.updatedAt)}`;
+    meta.textContent = "";
 
     const openBtn = document.createElement("button");
     openBtn.className = "link-action";
@@ -550,7 +548,23 @@ function renderGroups() {
       openGroupDialog(group);
     });
 
-    actions.append(openBtn, editBtn);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "link-action danger";
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "Delete group";
+    deleteBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const shouldDelete = window.confirm(
+        `Delete the group "${group.name}"? Links in it will be moved to another group in the same collection.`
+      );
+      if (!shouldDelete) {
+        return;
+      }
+      await deleteGroup(group.id);
+      await refreshData();
+    });
+
+    actions.append(openBtn, editBtn, deleteBtn);
 
     header.addEventListener("click", async () => {
       await setGroupCollapsed(group.id, !group.collapsed);
@@ -595,7 +609,13 @@ function openLinkDialog(link = null) {
   els.linkId.value = link?.id || "";
   els.linkTitle.value = link?.title || "";
   els.linkUrl.value = link?.url || "";
-  els.linkNotes.value = link?.notes || "";
+  ensureNotesEditor();
+  if (notesEditor) {
+    notesEditor.value(link?.notes || "");
+    setTimeout(() => notesEditor.codemirror.refresh(), 0);
+  } else {
+    els.linkNotes.value = link?.notes || "";
+  }
   draftTags = [...(link?.tags || [])];
   els.linkPinned.checked = Boolean(link?.pinned);
   populateGroupSelect();
@@ -638,29 +658,40 @@ function randomGroupColor() {
   return palette[Math.floor(Math.random() * palette.length)];
 }
 
-function applyMarkdown(control) {
-  const textarea = els.linkNotes;
-  const start = textarea.selectionStart ?? 0;
-  const end = textarea.selectionEnd ?? 0;
-  const selected = textarea.value.slice(start, end);
-  let replacement = selected;
-
-  if (control === "bold") {
-    replacement = `**${selected || "bold text"}**`;
-  } else if (control === "italic") {
-    replacement = `*${selected || "italic text"}*`;
-  } else if (control === "link") {
-    replacement = `[${selected || "link text"}](https://example.com)`;
-  } else if (control === "code") {
-    replacement = `\`${selected || "code"}\``;
-  } else if (control === "bullet") {
-    replacement = `- ${selected || "list item"}`;
-  } else if (control === "heading") {
-    replacement = `## ${selected || "Heading"}`;
+function ensureNotesEditor() {
+  if (notesEditor || !window.EasyMDE) {
+    return;
   }
 
-  textarea.setRangeText(replacement, start, end, "end");
-  textarea.focus();
+  notesEditor = new window.EasyMDE({
+    element: els.linkNotes,
+    autoDownloadFontAwesome: false,
+    spellChecker: false,
+    status: false,
+    minHeight: "160px",
+    sideBySideFullscreen: false,
+    placeholder: "Write notes in Markdown",
+    toolbar: [
+      "bold",
+      "italic",
+      "heading",
+      "|",
+      "quote",
+      "unordered-list",
+      "ordered-list",
+      "|",
+      "link",
+      "code",
+      "table",
+      "|",
+      "preview",
+      "side-by-side",
+      "fullscreen"
+    ]
+  });
+
+  // Open in split editor/preview mode by default.
+  notesEditor.toggleSideBySide();
 }
 
 async function resolveGroupIdFromInput() {
@@ -762,10 +793,6 @@ function attachEvents() {
     render();
   });
 
-  document.querySelectorAll("[data-md]").forEach((button) => {
-    button.addEventListener("click", () => applyMarkdown(button.getAttribute("data-md")));
-  });
-
   els.linkTagInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === ",") {
       event.preventDefault();
@@ -809,10 +836,23 @@ function attachEvents() {
       openCollectionDialog(activeCollection);
     }
   });
+  els.deleteCollectionQuickBtn.addEventListener("click", async () => {
+    const activeCollection = getActiveCollection();
+    if (!activeCollection) {
+      return;
+    }
+    const shouldDelete = window.confirm(
+      `Delete the collection "${activeCollection.name}"? Its groups will be moved into another collection.`
+    );
+    if (!shouldDelete) {
+      return;
+    }
+    await deleteCollection(activeCollection.id);
+    await refreshData();
+  });
   els.saveCurrentTabBtn.addEventListener("click", () => saveCurrentTabToGroup());
   els.importWindowBtn.addEventListener("click", () => importCurrentWindow());
   els.openGroupBtn.addEventListener("click", openVisibleLinks);
-  els.thisBrowserBtn.addEventListener("click", () => importCurrentWindow());
   els.importBackupInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -841,7 +881,7 @@ function attachEvents() {
       id: els.linkId.value ? Number(els.linkId.value) : undefined,
       title: els.linkTitle.value,
       url: els.linkUrl.value,
-      notes: els.linkNotes.value,
+      notes: notesEditor ? notesEditor.value() : els.linkNotes.value,
       tags: draftTags,
       groupId,
       pinned: els.linkPinned.checked
@@ -902,6 +942,12 @@ function attachEvents() {
     if (!id) {
       return;
     }
+    const shouldDelete = window.confirm(
+      `Delete this collection? Its groups will be moved into another collection.`
+    );
+    if (!shouldDelete) {
+      return;
+    }
     await deleteCollection(id);
     closeDialog(els.collectionDialog);
     await refreshData();
@@ -910,6 +956,12 @@ function attachEvents() {
   els.deleteGroupBtn.addEventListener("click", async () => {
     const id = Number(els.groupId.value);
     if (!id) {
+      return;
+    }
+    const shouldDelete = window.confirm(
+      `Delete this group? Links in it will be moved to another group in the same collection.`
+    );
+    if (!shouldDelete) {
       return;
     }
     await deleteGroup(id);
@@ -938,6 +990,7 @@ async function init() {
     window.history.replaceState({}, "", window.location.pathname);
   }
   attachEvents();
+  ensureNotesEditor();
   await refreshCurrentTabCount();
   await refreshData();
 }

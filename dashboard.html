@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Session Canvas</title>
+    <link rel="stylesheet" href="node_modules/@fortawesome/fontawesome-free/css/all.min.css" />
+    <link rel="stylesheet" href="node_modules/easymde/dist/easymde.min.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="dashboard-shell">
@@ -36,14 +38,6 @@
 
       <div class="workspace">
         <aside class="sidebar">
-          <section class="sidebar-panel">
-            <p class="sidebar-heading">Tabs</p>
-            <button id="thisBrowserBtn" class="browser-card">
-              <span>This browser</span>
-              <small id="browserTabCount">0 tabs</small>
-            </button>
-          </section>
-
           <section class="sidebar-panel sidebar-collections">
             <div class="sidebar-heading-row">
               <p class="sidebar-heading">Collections</p>
@@ -83,6 +77,7 @@
             <div class="hero-actions">
               <button id="newGroupBtn" class="ghost-button">New group</button>
               <button id="editCollectionBtn" class="ghost-button">Edit collection</button>
+              <button id="deleteCollectionQuickBtn" class="danger-button">Delete collection</button>
               <button id="openGroupBtn" class="ghost-button">Open visible</button>
             </div>
           </section>
@@ -125,14 +120,6 @@
 
         <label class="field">
           <span>Notes</span>
-          <div class="markdown-toolbar">
-            <button type="button" class="toolbar-button" data-md="bold">Bold</button>
-            <button type="button" class="toolbar-button" data-md="italic">Italic</button>
-            <button type="button" class="toolbar-button" data-md="link">Link</button>
-            <button type="button" class="toolbar-button" data-md="code">Code</button>
-            <button type="button" class="toolbar-button" data-md="bullet">Bullet</button>
-            <button type="button" class="toolbar-button" data-md="heading">Heading</button>
-          </div>
           <textarea id="linkNotes" name="notes" rows="4"></textarea>
         </label>
 
@@ -278,6 +265,7 @@
 
     <input id="importBackupInput" type="file" accept="application/json,.json" class="hidden" />
 
+    <script src="node_modules/easymde/dist/easymde.min.js"></script>
     <script type="module" src="dashboard.js"></script>
   </body>
 </html>
