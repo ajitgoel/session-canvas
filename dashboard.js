@@ -155,6 +155,10 @@ let draftTags = [];
 let quickDraftTags = [];
 let notesEditor = null;
 let quickNotesEditor = null;
+let quickComposerAutosaveTimer = null;
+let quickComposerAutosaveInFlight = false;
+let suppressQuickComposerAutosave = false;
+let lastQuickComposerSavedSignature = "";
 
 function setQuickAddMode(editing = false) {
   els.quickAddEyebrow.textContent = editing ? "Edit link" : "Quick add";
@@ -199,6 +203,111 @@ function requireVisibleValue(input, value, tabSetter, message) {
   input.focus();
   window.alert(message);
   return false;
+}
+
+function getQuickComposerPayload() {
+  return {
+    id: els.quickAddLinkId.value ? Number(els.quickAddLinkId.value) : undefined,
+    title: els.quickAddTitle.value,
+    url: els.quickAddUrl.value,
+    notes: quickNotesEditor ? quickNotesEditor.value() : els.quickAddNotes.value,
+    tags: [...quickDraftTags],
+    groupName: els.quickAddGroupInput.value.trim(),
+    pinned: els.quickAddPinned.checked
+  };
+}
+
+function getQuickComposerSignature(payload = getQuickComposerPayload()) {
+  return JSON.stringify({
+    id: payload.id || 0,
+    title: payload.title.trim(),
+    url: payload.url.trim(),
+    notes: payload.notes,
+    tags: [...payload.tags].map((tag) => tag.trim().toLowerCase()).sort(),
+    groupName: payload.groupName.trim().toLowerCase(),
+    pinned: Boolean(payload.pinned)
+  });
+}
+
+function clearQuickComposerAutosave() {
+  if (quickComposerAutosaveTimer) {
+    window.clearTimeout(quickComposerAutosaveTimer);
+    quickComposerAutosaveTimer = null;
+  }
+}
+
+async function saveQuickComposerEntry({ resetAfterSave }) {
+  const payload = getQuickComposerPayload();
+  if (!requireVisibleValue(els.quickAddTitle, payload.title, setQuickAddTab, "Please enter a title.")) {
+    return false;
+  }
+
+  const groupId = await resolveQuickGroupId();
+  await saveLink({
+    id: payload.id,
+    title: payload.title,
+    url: payload.url,
+    notes: payload.notes,
+    tags: payload.tags,
+    groupId,
+    pinned: payload.pinned
+  });
+
+  lastQuickComposerSavedSignature = getQuickComposerSignature({
+    ...payload,
+    groupName: els.quickAddGroupInput.value.trim()
+  });
+
+  if (resetAfterSave) {
+    resetQuickAddForm();
+    els.quickAddTitle.focus();
+  } else {
+    setQuickAddMode(true);
+  }
+
+  await refreshData();
+  await syncIfEnabled("Link saved");
+  return true;
+}
+
+function queueQuickComposerAutosave() {
+  if (suppressQuickComposerAutosave || quickComposerAutosaveInFlight) {
+    return;
+  }
+
+  const payload = getQuickComposerPayload();
+  if (!payload.id || !payload.title.trim() || !payload.groupName.trim()) {
+    clearQuickComposerAutosave();
+    return;
+  }
+
+  const signature = getQuickComposerSignature(payload);
+  if (signature === lastQuickComposerSavedSignature) {
+    clearQuickComposerAutosave();
+    return;
+  }
+
+  clearQuickComposerAutosave();
+  quickComposerAutosaveTimer = window.setTimeout(async () => {
+    quickComposerAutosaveTimer = null;
+    if (quickComposerAutosaveInFlight || suppressQuickComposerAutosave) {
+      return;
+    }
+
+    const nextPayload = getQuickComposerPayload();
+    if (!nextPayload.id || !nextPayload.title.trim() || !nextPayload.groupName.trim()) {
+      return;
+    }
+
+    quickComposerAutosaveInFlight = true;
+    try {
+      await saveQuickComposerEntry({ resetAfterSave: false });
+    } catch (error) {
+      window.alert(error.message || "Could not auto-save entry");
+    } finally {
+      quickComposerAutosaveInFlight = false;
+    }
+  }, 700);
 }
 
 function relativeTime(date) {
@@ -637,11 +746,13 @@ function appendQuickTag(tag) {
   renderQuickSelectedTags();
   els.quickAddTagInput.value = "";
   els.quickAddTagInput.focus();
+  queueQuickComposerAutosave();
 }
 
 function removeQuickTag(tag) {
   quickDraftTags = quickDraftTags.filter((value) => value.toLowerCase() !== tag.toLowerCase());
   renderQuickSelectedTags();
+  queueQuickComposerAutosave();
 }
 
 function removeDraftTag(tag) {
@@ -734,6 +845,8 @@ function setQuickAddDefaults() {
 }
 
 function resetQuickAddForm(prefill = {}) {
+  suppressQuickComposerAutosave = true;
+  clearQuickComposerAutosave();
   els.quickAddLinkId.value = prefill.id || "";
   els.quickAddTitle.value = prefill.title || "";
   els.quickAddUrl.value = prefill.url || "";
@@ -749,6 +862,8 @@ function resetQuickAddForm(prefill = {}) {
   setQuickAddDefaults();
   setQuickAddTab("details");
   setQuickAddMode(Boolean(prefill.id));
+  lastQuickComposerSavedSignature = prefill.id ? getQuickComposerSignature() : "";
+  suppressQuickComposerAutosave = false;
 }
 
 function editLinkInComposer(link) {
@@ -1141,6 +1256,9 @@ function ensureQuickNotesEditor() {
   });
 
   quickNotesEditor.toggleSideBySide();
+  quickNotesEditor.codemirror.on("change", () => {
+    queueQuickComposerAutosave();
+  });
 }
 
 async function resolveGroupIdFromInput() {
@@ -1512,6 +1630,19 @@ function attachEvents() {
     appendQuickTag(els.quickAddTagInput.value);
   });
 
+  [els.quickAddTitle, els.quickAddUrl, els.quickAddGroupInput].forEach((element) => {
+    element.addEventListener("input", () => {
+      queueQuickComposerAutosave();
+    });
+    element.addEventListener("blur", () => {
+      queueQuickComposerAutosave();
+    });
+  });
+
+  els.quickAddPinned.addEventListener("change", () => {
+    queueQuickComposerAutosave();
+  });
+
   els.securityForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -1663,34 +1794,15 @@ function attachEvents() {
 
   els.quickAddForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (
-      !requireVisibleValue(
-        els.quickAddTitle,
-        els.quickAddTitle.value,
-        setQuickAddTab,
-        "Please enter a title."
-      )
-    ) {
-      return;
-    }
-
     try {
-      const groupId = await resolveQuickGroupId();
-      await saveLink({
-        id: els.quickAddLinkId.value ? Number(els.quickAddLinkId.value) : undefined,
-        title: els.quickAddTitle.value,
-        url: els.quickAddUrl.value,
-        notes: quickNotesEditor ? quickNotesEditor.value() : els.quickAddNotes.value,
-        tags: quickDraftTags,
-        groupId,
-        pinned: els.quickAddPinned.checked
-      });
-      resetQuickAddForm();
-      await refreshData();
-      await syncIfEnabled("Link saved");
-      els.quickAddTitle.focus();
+      const isEditing = Boolean(els.quickAddLinkId.value);
+      clearQuickComposerAutosave();
+      quickComposerAutosaveInFlight = true;
+      await saveQuickComposerEntry({ resetAfterSave: !isEditing });
     } catch (error) {
       window.alert(error.message || "Could not save entry");
+    } finally {
+      quickComposerAutosaveInFlight = false;
     }
   });
 
