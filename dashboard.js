@@ -492,7 +492,10 @@ function renderNav() {
       </div>
     `;
 
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      if (event.target.closest(".group-nav-item-title, .inline-rename-input")) {
+        return;
+      }
       if (document.activeElement?.classList?.contains("inline-rename-input")) {
         return;
       }
@@ -502,6 +505,18 @@ function renderNav() {
 
     const title = button.querySelector(".group-nav-item-title");
     attachInlineRename(title, "collection", collection);
+    title.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (title.__openTimer) {
+        window.clearTimeout(title.__openTimer);
+      }
+      title.__openTimer = window.setTimeout(() => {
+        state.activeCollectionId = collection.id;
+        render();
+        title.__openTimer = null;
+      }, 320);
+    });
 
     els.collectionNav.append(button);
   }
@@ -777,7 +792,7 @@ function createLinkCard(link) {
     title.__openTimer = window.setTimeout(() => {
       chrome.tabs.create({ url: link.url });
       title.__openTimer = null;
-    }, 220);
+    }, 320);
   });
 
   if (link.pinned) {
