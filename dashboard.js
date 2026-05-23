@@ -69,11 +69,20 @@ const els = {
   heroMeta: document.querySelector("#heroMeta"),
   tagFilterChips: document.querySelector("#tagFilterChips"),
   newGroupBtn: document.querySelector("#newGroupBtn"),
-  editCollectionBtn: document.querySelector("#editCollectionBtn"),
   deleteCollectionQuickBtn: document.querySelector("#deleteCollectionQuickBtn"),
   openGroupBtn: document.querySelector("#openGroupBtn"),
   groupsContainer: document.querySelector("#groupsContainer"),
   emptyState: document.querySelector("#emptyState"),
+  quickAddForm: document.querySelector("#quickAddForm"),
+  quickAddTitle: document.querySelector("#quickAddTitle"),
+  quickAddUrl: document.querySelector("#quickAddUrl"),
+  quickAddTagInput: document.querySelector("#quickAddTagInput"),
+  quickSelectedTags: document.querySelector("#quickSelectedTags"),
+  quickExistingTagSuggestions: document.querySelector("#quickExistingTagSuggestions"),
+  quickAddGroupInput: document.querySelector("#quickAddGroupInput"),
+  quickExistingGroupSuggestions: document.querySelector("#quickExistingGroupSuggestions"),
+  quickAddPinned: document.querySelector("#quickAddPinned"),
+  openComposerNotesBtn: document.querySelector("#openComposerNotesBtn"),
   linkDialog: document.querySelector("#linkDialog"),
   linkDialogTitle: document.querySelector("#linkDialogTitle"),
   linkForm: document.querySelector("#linkForm"),
@@ -134,6 +143,7 @@ const els = {
 };
 
 let draftTags = [];
+let quickDraftTags = [];
 let notesEditor = null;
 
 function setLinkDialogTab(tab) {
@@ -284,7 +294,6 @@ function setVaultUiState() {
     els.addLinkBtn,
     els.newCollectionBtn,
     els.newGroupBtn,
-    els.editCollectionBtn,
     els.openGroupBtn,
     els.searchInput,
     els.collectionsTabBtn,
@@ -294,8 +303,14 @@ function setVaultUiState() {
     els.googleAutoSyncInput,
     els.connectDriveBtn,
     els.disconnectDriveBtn,
-    els.syncNowBtn
-  ].forEach((element) => {
+    els.syncNowBtn,
+    els.quickAddTitle,
+    els.quickAddUrl,
+    els.quickAddTagInput,
+    els.quickAddGroupInput,
+    els.quickAddPinned,
+    els.openComposerNotesBtn
+  ].filter(Boolean).forEach((element) => {
     element.disabled = locked;
   });
 
@@ -473,14 +488,20 @@ function renderNav() {
     button.innerHTML = `
       <span class="group-dot" style="background:${collection.color}"></span>
       <div>
-        <div class="group-nav-item-title">${collection.name}</div>
+        <div class="group-nav-item-title inline-editable">${collection.name}</div>
       </div>
     `;
 
     button.addEventListener("click", () => {
+      if (document.activeElement?.classList?.contains("inline-rename-input")) {
+        return;
+      }
       state.activeCollectionId = collection.id;
       render();
     });
+
+    const title = button.querySelector(".group-nav-item-title");
+    attachInlineRename(title, "collection", collection);
 
     els.collectionNav.append(button);
   }
@@ -500,6 +521,7 @@ function renderHero() {
   els.heroMeta.textContent = "";
   els.heroBadge.style.background = activeCollection.color;
   els.deleteCollectionQuickBtn.disabled = false;
+  attachInlineRename(els.heroTitle, "collection", activeCollection);
 }
 
 function renderTagFilters() {
@@ -544,6 +566,24 @@ function appendTagToInput(tag) {
   els.linkTagInput.focus();
 }
 
+function appendQuickTag(tag) {
+  const normalized = tag.trim();
+  if (!normalized) {
+    return;
+  }
+  if (!quickDraftTags.some((value) => value.toLowerCase() === normalized.toLowerCase())) {
+    quickDraftTags.push(normalized);
+  }
+  renderQuickSelectedTags();
+  els.quickAddTagInput.value = "";
+  els.quickAddTagInput.focus();
+}
+
+function removeQuickTag(tag) {
+  quickDraftTags = quickDraftTags.filter((value) => value.toLowerCase() !== tag.toLowerCase());
+  renderQuickSelectedTags();
+}
+
 function removeDraftTag(tag) {
   draftTags = draftTags.filter((value) => value.toLowerCase() !== tag.toLowerCase());
   renderSelectedTags();
@@ -561,9 +601,22 @@ function renderSelectedTags() {
   });
 }
 
+function renderQuickSelectedTags() {
+  els.quickSelectedTags.innerHTML = "";
+  quickDraftTags.forEach((tag) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "selected-tag-chip";
+    chip.textContent = `${tag} ×`;
+    chip.addEventListener("click", () => removeQuickTag(tag));
+    els.quickSelectedTags.append(chip);
+  });
+}
+
 function renderTagSuggestions() {
   els.tagSuggestions.innerHTML = "";
   els.existingTagSuggestions.innerHTML = "";
+  els.quickExistingTagSuggestions.innerHTML = "";
 
   state.tags.forEach((entry) => {
     const option = document.createElement("option");
@@ -572,33 +625,127 @@ function renderTagSuggestions() {
   });
 
   state.tags.slice(0, 12).forEach((entry) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "existing-tag-chip";
-    button.textContent = entry.tag;
-    button.addEventListener("click", () => appendTagToInput(entry.tag));
-    els.existingTagSuggestions.append(button);
+    const buildChip = (handler, container) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "existing-tag-chip";
+      button.textContent = entry.tag;
+      button.addEventListener("click", handler);
+      container.append(button);
+    };
+
+    buildChip(() => appendTagToInput(entry.tag), els.existingTagSuggestions);
+    buildChip(() => appendQuickTag(entry.tag), els.quickExistingTagSuggestions);
   });
 }
 
 function renderGroupSuggestions() {
   els.existingGroupSuggestions.innerHTML = "";
+  els.quickExistingGroupSuggestions.innerHTML = "";
   const activeCollection = getActiveCollection();
   if (!activeCollection) {
     return;
   }
 
   activeCollection.groups.forEach((group) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "existing-tag-chip";
-    button.textContent = group.name;
-    button.addEventListener("click", () => {
-      els.linkGroupInput.value = group.name;
-      els.linkGroupInput.focus();
-    });
-    els.existingGroupSuggestions.append(button);
+    const makeChip = (targetInput, targetContainer) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "existing-tag-chip";
+      button.textContent = group.name;
+      button.addEventListener("click", () => {
+        targetInput.value = group.name;
+        targetInput.focus();
+      });
+      targetContainer.append(button);
+    };
+
+    makeChip(els.linkGroupInput, els.existingGroupSuggestions);
+    makeChip(els.quickAddGroupInput, els.quickExistingGroupSuggestions);
   });
+}
+
+function setQuickAddDefaults() {
+  const activeCollection = getActiveCollection();
+  const firstGroup = activeCollection?.groups[0]?.name || "";
+  if (!els.quickAddGroupInput.value.trim()) {
+    els.quickAddGroupInput.value = firstGroup;
+  }
+}
+
+function resetQuickAddForm(prefill = {}) {
+  els.quickAddTitle.value = prefill.title || "";
+  els.quickAddUrl.value = prefill.url || "";
+  els.quickAddPinned.checked = Boolean(prefill.pinned);
+  quickDraftTags = [...(prefill.tags || [])];
+  renderQuickSelectedTags();
+  els.quickAddGroupInput.value = prefill.groupName || "";
+  setQuickAddDefaults();
+}
+
+async function renameInline(kind, entity, nextName) {
+  const name = nextName.trim();
+  const currentName = entity.name || entity.title || "";
+  if (!name || name === currentName) {
+    return;
+  }
+
+  if (kind === "collection") {
+    await updateCollection(entity.id, { name });
+  } else if (kind === "group") {
+    await updateGroup(entity.id, { name });
+  } else if (kind === "link") {
+    await saveLink({
+      ...entity,
+      title: name
+    });
+  }
+
+  await refreshData();
+  await syncIfEnabled(`${kind} renamed`);
+}
+
+function attachInlineRename(element, kind, entity, options = {}) {
+  element.ondblclick = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (element.__openTimer) {
+      window.clearTimeout(element.__openTimer);
+      element.__openTimer = null;
+    }
+    const input = document.createElement("input");
+    input.value = entity.name || entity.title || "";
+    input.className = "inline-rename-input";
+    const commit = async () => {
+      const value = input.value;
+      input.replaceWith(element);
+      await renameInline(kind, entity, value);
+    };
+    const cancel = () => input.replaceWith(element);
+
+    input.addEventListener("keydown", async (keyEvent) => {
+      if (keyEvent.key === "Enter") {
+        keyEvent.preventDefault();
+        await commit();
+      } else if (keyEvent.key === "Escape") {
+        cancel();
+      }
+    });
+    input.addEventListener("blur", commit, { once: true });
+    element.replaceWith(input);
+    input.focus();
+    input.select();
+  };
+
+  if (options.singleClick) {
+    element.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    };
+  } else {
+    element.onclick = null;
+  }
 }
 
 function createLinkCard(link) {
@@ -620,7 +767,18 @@ function createLinkCard(link) {
 
   title.textContent = link.title || link.url;
   url.href = link.url;
-  url.textContent = link.url;
+  url.textContent = link.url.replace(/^https?:\/\//, "");
+  title.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (title.__openTimer) {
+      window.clearTimeout(title.__openTimer);
+    }
+    title.__openTimer = window.setTimeout(() => {
+      chrome.tabs.create({ url: link.url });
+      title.__openTimer = null;
+    }, 220);
+  });
 
   if (link.pinned) {
     pinPill.classList.remove("hidden");
@@ -633,10 +791,10 @@ function createLinkCard(link) {
     tagRow.append(pill);
   });
 
-  card.querySelector('[data-action="edit"]').addEventListener("click", () => openLinkDialog(link));
-  card.querySelector('[data-action="open"]').addEventListener("click", () =>
-    chrome.tabs.create({ url: link.url })
-  );
+  attachInlineRename(title, "link", link);
+  card.querySelector('[data-action="rename"]').addEventListener("click", () => {
+    title.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
   card.querySelector('[data-action="delete"]').addEventListener("click", async () => {
     await deleteLink(link.id);
     await refreshData();
@@ -676,24 +834,27 @@ function renderGroups() {
     title.textContent = group.name;
     meta.textContent = "";
 
+    attachInlineRename(title, "group", group);
+
+    const addBtn = document.createElement("button");
+    addBtn.className = "link-action";
+    addBtn.type = "button";
+    addBtn.textContent = "Add here";
+    addBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      els.quickAddGroupInput.value = group.name;
+      els.quickAddTitle.focus();
+    });
+
     const openBtn = document.createElement("button");
     openBtn.className = "link-action";
     openBtn.type = "button";
-    openBtn.textContent = "Open group";
+    openBtn.textContent = "Open";
     openBtn.addEventListener("click", async (event) => {
       event.stopPropagation();
       for (const link of visibleLinks) {
         await chrome.tabs.create({ url: link.url, active: false });
       }
-    });
-
-    const editBtn = document.createElement("button");
-    editBtn.className = "link-action";
-    editBtn.type = "button";
-    editBtn.textContent = "Edit";
-    editBtn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openGroupDialog(group);
     });
 
     const deleteBtn = document.createElement("button");
@@ -713,9 +874,12 @@ function renderGroups() {
       await syncIfEnabled("Group deleted");
     });
 
-    actions.append(openBtn, editBtn, deleteBtn);
+    actions.append(addBtn, openBtn, deleteBtn);
 
-    header.addEventListener("click", async () => {
+    header.addEventListener("click", async (event) => {
+      if (event.target.closest(".inline-editable, .inline-rename-input, .group-header-actions")) {
+        return;
+      }
       await setGroupCollapsed(group.id, !group.collapsed);
       await refreshData();
       await syncIfEnabled("Group collapse updated");
@@ -747,7 +911,9 @@ function render() {
   renderGroupSuggestions();
   renderDriveSettings();
   renderSelectedTags();
+  renderQuickSelectedTags();
   renderGroups();
+  setQuickAddDefaults();
 }
 
 function closeDialog(dialog) {
@@ -850,6 +1016,32 @@ function ensureNotesEditor() {
 async function resolveGroupIdFromInput() {
   const activeCollection = getActiveCollection();
   const typedName = els.linkGroupInput.value.trim();
+
+  if (!activeCollection) {
+    throw new Error("No active collection");
+  }
+  if (!typedName) {
+    throw new Error("Please choose or type a group");
+  }
+
+  const existing = activeCollection.groups.find(
+    (group) => group.name.trim().toLowerCase() === typedName.toLowerCase()
+  );
+  if (existing) {
+    return existing.id;
+  }
+
+  const created = await createGroup({
+    collectionId: activeCollection.id,
+    name: typedName,
+    color: randomGroupColor()
+  });
+  return created.id;
+}
+
+async function resolveQuickGroupId() {
+  const activeCollection = getActiveCollection();
+  const typedName = els.quickAddGroupInput.value.trim();
 
   if (!activeCollection) {
     throw new Error("No active collection");
@@ -1172,6 +1364,19 @@ function attachEvents() {
     appendTagToInput(els.linkTagInput.value);
   });
 
+  els.quickAddTagInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      appendQuickTag(els.quickAddTagInput.value);
+    } else if (event.key === "Backspace" && !els.quickAddTagInput.value && quickDraftTags.length > 0) {
+      removeQuickTag(quickDraftTags[quickDraftTags.length - 1]);
+    }
+  });
+
+  els.quickAddTagInput.addEventListener("blur", () => {
+    appendQuickTag(els.quickAddTagInput.value);
+  });
+
   els.securityForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -1187,7 +1392,7 @@ function attachEvents() {
     }
   });
 
-  els.addLinkBtn.addEventListener("click", () => openLinkDialog());
+  els.addLinkBtn.addEventListener("click", () => els.quickAddTitle.focus());
   els.settingsImportBackupBtn.addEventListener("click", () => els.importBackupInput.click());
   els.settingsExportBackupBtn.addEventListener("click", exportBackup);
   els.lockVaultBtn.addEventListener("click", async () => {
@@ -1196,12 +1401,6 @@ function attachEvents() {
   });
   els.newCollectionBtn.addEventListener("click", () => openCollectionDialog());
   els.newGroupBtn.addEventListener("click", () => openGroupDialog());
-  els.editCollectionBtn.addEventListener("click", () => {
-    const activeCollection = getActiveCollection();
-    if (activeCollection) {
-      openCollectionDialog(activeCollection);
-    }
-  });
   els.deleteCollectionQuickBtn.addEventListener("click", async () => {
     const activeCollection = getActiveCollection();
     if (!activeCollection) {
@@ -1220,6 +1419,17 @@ function attachEvents() {
   els.saveCurrentTabBtn.addEventListener("click", () => saveCurrentTabToGroup());
   els.importWindowBtn.addEventListener("click", () => importCurrentWindow());
   els.openGroupBtn.addEventListener("click", openVisibleLinks);
+  els.openComposerNotesBtn.addEventListener("click", () => {
+    openLinkDialog({
+      title: els.quickAddTitle.value.trim(),
+      url: els.quickAddUrl.value.trim(),
+      tags: [...quickDraftTags],
+      groupName: els.quickAddGroupInput.value.trim(),
+      pinned: els.quickAddPinned.checked,
+      notes: notesEditor ? notesEditor.value() : ""
+    });
+    setLinkDialogTab("notes");
+  });
   els.googleClientIdInput.addEventListener("change", async (event) => {
     const clientId = event.target.value.trim();
     state.driveSettings = await updateDriveSyncSettings({
@@ -1319,6 +1529,23 @@ function attachEvents() {
       );
     }
     await syncIfEnabled("Backup import");
+  });
+
+  els.quickAddForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const groupId = await resolveQuickGroupId();
+    await saveLink({
+      title: els.quickAddTitle.value,
+      url: els.quickAddUrl.value,
+      notes: "",
+      tags: quickDraftTags,
+      groupId,
+      pinned: els.quickAddPinned.checked
+    });
+    resetQuickAddForm();
+    await refreshData();
+    await syncIfEnabled("Link saved");
+    els.quickAddTitle.focus();
   });
 
   els.linkForm.addEventListener("submit", async (event) => {
@@ -1443,6 +1670,7 @@ async function init() {
   }
   attachEvents();
   ensureNotesEditor();
+  resetQuickAddForm();
   await refreshCurrentTabCount();
   await refreshData();
 }

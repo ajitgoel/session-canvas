@@ -278,6 +278,58 @@ button {
   padding: 16px 18px 28px;
 }
 
+.collections-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.collections-main {
+  min-width: 0;
+}
+
+.composer-rail {
+  position: sticky;
+  top: 16px;
+}
+
+.composer-card {
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.composer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.composer-header h3 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: 1.25rem;
+}
+
+.quick-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.compact-button {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
+.compact-field {
+  gap: 4px;
+}
+
 .view-switcher {
   display: inline-flex;
   gap: 6px;
@@ -522,11 +574,11 @@ button {
 .groups-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .group-section {
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--panel);
   box-shadow: none;
   overflow: hidden;
@@ -539,7 +591,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 12px 14px;
+  padding: 9px 12px;
   background: transparent;
   border: 0;
 }
@@ -585,7 +637,7 @@ button {
 .group-title,
 .link-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.92rem;
   line-height: 1.2;
 }
 
@@ -603,8 +655,8 @@ button {
 .group-links {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 12px 12px;
+  gap: 2px;
+  padding: 0 8px 8px;
 }
 
 .group-section.collapsed .group-links {
@@ -613,27 +665,27 @@ button {
 
 .link-card {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(17, 24, 39, 0.05);
+  gap: 8px;
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid transparent;
 }
 
 .link-primary {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   flex: 1;
+  align-items: center;
 }
 
 .link-favicon {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
   background: rgba(12, 123, 220, 0.08);
 }
 
@@ -645,17 +697,33 @@ button {
 .link-main-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   flex-wrap: nowrap;
 }
 
 .link-title {
-  flex: 0 1 auto;
-  font-size: 0.95rem;
+  flex: 0 1 220px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.84rem;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.link-title-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.link-separator {
+  color: rgba(17, 24, 39, 0.26);
+  font-size: 0.72rem;
 }
 
 .link-url {
@@ -667,7 +735,7 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   line-height: 1.2;
 }
 
@@ -679,38 +747,52 @@ button {
   display: flex;
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
   overflow: hidden;
 }
 
 .tag {
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 999px;
   background: rgba(12, 123, 220, 0.08);
   color: var(--accent-deep);
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   white-space: nowrap;
 }
 
 .pin-pill {
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 999px;
   background: rgba(239, 185, 7, 0.18);
   color: #7b5a00;
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   font-weight: 700;
   flex: 0 0 auto;
 }
 
 .link-actions {
   flex: 0 0 auto;
-  gap: 6px;
+  gap: 4px;
 }
 
 .link-action {
-  padding: 6px 10px;
-  font-size: 0.8rem;
+  padding: 4px 7px;
+  font-size: 0.72rem;
+}
+
+.inline-editable {
+  cursor: text;
+}
+
+.inline-rename-input {
+  min-width: 120px;
+  border: 1px solid rgba(12, 123, 220, 0.35);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
 }
 
 .modal {
@@ -1018,6 +1100,10 @@ button {
   }
 
   .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .collections-layout {
     grid-template-columns: 1fr;
   }
 

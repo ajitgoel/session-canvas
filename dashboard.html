@@ -66,36 +66,85 @@
           </section>
 
           <section id="collectionsView">
-            <section class="collection-hero">
-              <div>
-                <p class="eyebrow">Active collection</p>
-                <div class="hero-title-row">
-                  <div id="heroBadge" class="hero-badge"></div>
+            <div class="collections-layout">
+              <div class="collections-main">
+                <section class="collection-hero">
                   <div>
-                    <h2 id="heroTitle">All collections</h2>
-                    <p id="heroMeta" class="hero-meta"></p>
+                    <p class="eyebrow">Active collection</p>
+                    <div class="hero-title-row">
+                      <div id="heroBadge" class="hero-badge"></div>
+                      <div>
+                        <h2 id="heroTitle" class="inline-editable">All collections</h2>
+                        <p id="heroMeta" class="hero-meta"></p>
+                      </div>
+                    </div>
                   </div>
-                </div>
+
+                  <div class="hero-actions">
+                    <button id="newGroupBtn" class="ghost-button">New group</button>
+                    <button id="deleteCollectionQuickBtn" class="danger-button">Delete collection</button>
+                    <button id="openGroupBtn" class="ghost-button">Open visible</button>
+                  </div>
+                </section>
+
+                <section class="tag-filter-bar">
+                  <div id="tagFilterChips" class="tag-filter-chips"></div>
+                </section>
+
+                <section id="emptyState" class="empty-state hidden">
+                  <h3>No groups yet</h3>
+                  <p>Create a group in this collection, then save links with names, tags, notes, and URLs.</p>
+                </section>
+
+                <section id="groupsContainer" class="groups-container"></section>
               </div>
 
-              <div class="hero-actions">
-                <button id="newGroupBtn" class="ghost-button">New group</button>
-                <button id="editCollectionBtn" class="ghost-button">Edit collection</button>
-                <button id="deleteCollectionQuickBtn" class="danger-button">Delete collection</button>
-                <button id="openGroupBtn" class="ghost-button">Open visible</button>
-              </div>
-            </section>
+              <aside class="composer-rail">
+                <section class="composer-card">
+                  <div class="composer-header">
+                    <div>
+                      <p class="eyebrow">Quick add</p>
+                      <h3>Add link</h3>
+                    </div>
+                    <button id="openComposerNotesBtn" class="ghost-button compact-button" type="button">Notes</button>
+                  </div>
 
-            <section class="tag-filter-bar">
-              <div id="tagFilterChips" class="tag-filter-chips"></div>
-            </section>
+                  <form id="quickAddForm" class="quick-add-form">
+                    <label class="field compact-field">
+                      <span>Title</span>
+                      <input id="quickAddTitle" required />
+                    </label>
 
-            <section id="emptyState" class="empty-state hidden">
-              <h3>No groups yet</h3>
-              <p>Create a group in this collection, then save links with names, tags, notes, and URLs.</p>
-            </section>
+                    <label class="field compact-field">
+                      <span>URL</span>
+                      <input id="quickAddUrl" type="text" inputmode="url" placeholder="example.com" required />
+                    </label>
 
-            <section id="groupsContainer" class="groups-container"></section>
+                    <label class="field compact-field">
+                      <span>Tags</span>
+                      <input id="quickAddTagInput" list="tagSuggestions" placeholder="Enter tags and press Enter" />
+                    </label>
+
+                    <div id="quickSelectedTags" class="selected-tags"></div>
+                    <div id="quickExistingTagSuggestions" class="existing-tag-suggestions"></div>
+
+                    <div class="field compact-field">
+                      <span>Group</span>
+                      <input id="quickAddGroupInput" list="groupSuggestions" placeholder="Type or select a group" />
+                    </div>
+
+                    <div id="quickExistingGroupSuggestions" class="existing-tag-suggestions"></div>
+
+                    <label class="checkbox-field compact-checkbox">
+                      <input id="quickAddPinned" type="checkbox" />
+                      <span>Pin</span>
+                    </label>
+
+                    <button type="submit" class="primary-button">Save link</button>
+                  </form>
+                </section>
+              </aside>
+            </div>
           </section>
 
           <section id="settingsView" class="settings-view hidden">
@@ -361,7 +410,7 @@
             <span class="collapse-chevron">▾</span>
             <span class="folder-icon"></span>
             <div>
-              <h3 class="group-title"></h3>
+              <h3 class="group-title inline-editable"></h3>
               <p class="group-meta"></p>
             </div>
           </div>
@@ -377,17 +426,17 @@
           <img class="link-favicon" alt="" />
           <div class="link-copy">
             <div class="link-main-row">
-              <h4 class="link-title"></h4>
-              <a class="link-url" target="_blank" rel="noreferrer"></a>
+              <button class="link-title link-title-button" type="button"></button>
+              <span class="link-separator">-</span>
+              <a class="link-url link-open" target="_blank" rel="noreferrer"></a>
               <div class="tag-row"></div>
               <span class="pin-pill hidden">Pinned</span>
             </div>
           </div>
         </div>
         <div class="link-actions">
-          <button class="link-action" data-action="edit">Edit</button>
-          <button class="link-action" data-action="open">Open</button>
-          <button class="link-action danger" data-action="delete">Delete</button>
+          <button class="link-action compact-icon" data-action="rename" aria-label="Rename link">Rename</button>
+          <button class="link-action compact-icon danger" data-action="delete" aria-label="Delete link">Delete</button>
         </div>
       </article>
     </template>
