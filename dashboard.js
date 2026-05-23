@@ -73,7 +73,12 @@ const els = {
   openGroupBtn: document.querySelector("#openGroupBtn"),
   groupsContainer: document.querySelector("#groupsContainer"),
   emptyState: document.querySelector("#emptyState"),
+  quickAddEyebrow: document.querySelector("#quickAddEyebrow"),
+  quickAddHeading: document.querySelector("#quickAddHeading"),
+  quickAddCancelEditBtn: document.querySelector("#quickAddCancelEditBtn"),
+  quickAddSubmitBtn: document.querySelector("#quickAddSubmitBtn"),
   quickAddForm: document.querySelector("#quickAddForm"),
+  quickAddLinkId: document.querySelector("#quickAddLinkId"),
   quickAddDetailsTabBtn: document.querySelector("#quickAddDetailsTabBtn"),
   quickAddNotesTabBtn: document.querySelector("#quickAddNotesTabBtn"),
   quickAddDetailsPanel: document.querySelector("#quickAddDetailsPanel"),
@@ -150,6 +155,13 @@ let draftTags = [];
 let quickDraftTags = [];
 let notesEditor = null;
 let quickNotesEditor = null;
+
+function setQuickAddMode(editing = false) {
+  els.quickAddEyebrow.textContent = editing ? "Edit link" : "Quick add";
+  els.quickAddHeading.textContent = editing ? "Edit link" : "Add link";
+  els.quickAddSubmitBtn.textContent = editing ? "Save changes" : "Save link";
+  els.quickAddCancelEditBtn.classList.toggle("hidden", !editing);
+}
 
 function setLinkDialogTab(tab) {
   const showingNotes = tab === "notes";
@@ -711,6 +723,7 @@ function setQuickAddDefaults() {
 }
 
 function resetQuickAddForm(prefill = {}) {
+  els.quickAddLinkId.value = prefill.id || "";
   els.quickAddTitle.value = prefill.title || "";
   els.quickAddUrl.value = prefill.url || "";
   els.quickAddPinned.checked = Boolean(prefill.pinned);
@@ -724,6 +737,21 @@ function resetQuickAddForm(prefill = {}) {
   els.quickAddGroupInput.value = prefill.groupName || "";
   setQuickAddDefaults();
   setQuickAddTab("details");
+  setQuickAddMode(Boolean(prefill.id));
+}
+
+function editLinkInComposer(link) {
+  resetQuickAddForm({
+    id: link.id,
+    title: link.title || "",
+    url: link.url || "",
+    notes: link.notes || "",
+    tags: link.tags || [],
+    groupName: link.groupName || "",
+    pinned: Boolean(link.pinned)
+  });
+  els.quickAddTitle.focus();
+  els.quickAddTitle.select();
 }
 
 async function renameInline(kind, entity, nextName) {
@@ -835,8 +863,10 @@ function createLinkCard(link) {
   });
 
   attachInlineRename(title, "link", link);
-  card.querySelector('[data-action="rename"]').addEventListener("click", () => {
-    title.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  card.querySelector('[data-action="edit"]').addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    editLinkInComposer(link);
   });
   card.querySelector('[data-action="delete"]').addEventListener("click", async () => {
     await deleteLink(link.id);
@@ -1471,7 +1501,13 @@ function attachEvents() {
     }
   });
 
-  els.addLinkBtn.addEventListener("click", () => els.quickAddTitle.focus());
+  els.addLinkBtn.addEventListener("click", () => {
+    resetQuickAddForm();
+    els.quickAddTitle.focus();
+  });
+  els.quickAddCancelEditBtn.addEventListener("click", () => {
+    resetQuickAddForm();
+  });
   els.settingsImportBackupBtn.addEventListener("click", () => els.importBackupInput.click());
   els.settingsExportBackupBtn.addEventListener("click", exportBackup);
   els.lockVaultBtn.addEventListener("click", async () => {
@@ -1603,6 +1639,7 @@ function attachEvents() {
     event.preventDefault();
     const groupId = await resolveQuickGroupId();
     await saveLink({
+      id: els.quickAddLinkId.value ? Number(els.quickAddLinkId.value) : undefined,
       title: els.quickAddTitle.value,
       url: els.quickAddUrl.value,
       notes: quickNotesEditor ? quickNotesEditor.value() : els.quickAddNotes.value,

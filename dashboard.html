@@ -103,12 +103,14 @@
                 <section class="composer-card">
                   <div class="composer-header">
                     <div>
-                      <p class="eyebrow">Quick add</p>
-                      <h3>Add link</h3>
+                      <p id="quickAddEyebrow" class="eyebrow">Quick add</p>
+                      <h3 id="quickAddHeading">Add link</h3>
                     </div>
+                    <button id="quickAddCancelEditBtn" class="ghost-button compact-button hidden" type="button">Cancel</button>
                   </div>
 
                   <form id="quickAddForm" class="quick-add-form">
+                    <input id="quickAddLinkId" type="hidden" />
                     <div class="composer-tabs">
                       <button id="quickAddDetailsTabBtn" class="composer-tab active" type="button">Details</button>
                       <button id="quickAddNotesTabBtn" class="composer-tab" type="button">Notes</button>
@@ -153,7 +155,7 @@
                       </label>
                     </section>
 
-                    <button type="submit" class="primary-button">Save link</button>
+                    <button id="quickAddSubmitBtn" type="submit" class="primary-button">Save link</button>
                   </form>
                 </section>
               </aside>
@@ -448,7 +450,7 @@
           </div>
         </div>
         <div class="link-actions">
-          <button class="link-action compact-icon" data-action="rename" aria-label="Rename link">Rename</button>
+          <button class="link-action compact-icon" data-action="edit" aria-label="Edit link">Edit</button>
           <button class="link-action compact-icon danger" data-action="delete" aria-label="Delete link">Delete</button>
         </div>
       </article>
