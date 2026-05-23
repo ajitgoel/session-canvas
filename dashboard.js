@@ -190,6 +190,17 @@ function setQuickAddTab(tab) {
   }
 }
 
+function requireVisibleValue(input, value, tabSetter, message) {
+  if (value.trim()) {
+    return true;
+  }
+
+  tabSetter("details");
+  input.focus();
+  window.alert(message);
+  return false;
+}
+
 function relativeTime(date) {
   const diffMs = Date.now() - date;
   const minutes = Math.floor(diffMs / 60000);
@@ -517,17 +528,17 @@ function renderNav() {
 
   for (const collection of getVisibleCollections()) {
     const button = document.createElement("button");
-    button.className = `group-nav-item${collection.id === state.activeCollectionId ? " active" : ""}`;
+    button.className = `collection-pill${collection.id === state.activeCollectionId ? " active" : ""}`;
     button.type = "button";
     button.innerHTML = `
       <span class="group-dot" style="background:${collection.color}"></span>
       <div>
-        <div class="group-nav-item-title inline-editable">${collection.name}</div>
+        <div class="collection-pill-title inline-editable">${collection.name}</div>
       </div>
     `;
 
     button.addEventListener("click", (event) => {
-      if (event.target.closest(".group-nav-item-title, .inline-rename-input")) {
+      if (event.target.closest(".collection-pill-title, .inline-rename-input")) {
         return;
       }
       if (document.activeElement?.classList?.contains("inline-rename-input")) {
@@ -537,7 +548,7 @@ function renderNav() {
       render();
     });
 
-    const title = button.querySelector(".group-nav-item-title");
+    const title = button.querySelector(".collection-pill-title");
     attachInlineRename(title, "collection", collection);
     title.addEventListener("click", (event) => {
       event.preventDefault();
@@ -824,24 +835,33 @@ function createLinkCard(link) {
   const card = fragment.querySelector(".link-card");
   const favicon = fragment.querySelector(".link-favicon");
   const title = fragment.querySelector(".link-title");
+  const separator = fragment.querySelector(".link-separator");
   const url = fragment.querySelector(".link-url");
   const tagRow = fragment.querySelector(".tag-row");
   const pinPill = fragment.querySelector(".pin-pill");
+  const hasUrl = Boolean(link.url);
 
-  favicon.src =
-    link.favicon ||
-    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=64`;
+  favicon.src = hasUrl
+    ? link.favicon ||
+      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(link.url)}&sz=64`
+    : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c7bdc' fill-opacity='.14'/%3E%3Cpath d='M18 18h28a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4V22a4 4 0 0 1 4-4Zm4 8v2h20v-2Zm0 6v2h20v-2Zm0 6v2h14v-2Z' fill='%23095ca8'/%3E%3C/svg%3E";
   favicon.onerror = () => {
     favicon.src =
       "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c7bdc' fill-opacity='.14'/%3E%3Cpath d='M20 44V20h24v6H26v18h18v-6h4v10H20Z' fill='%23095ca8'/%3E%3Cpath d='M30 18h14v4H30zM38 26h6v4h-6zM34 30h10v4H34z' fill='%23095ca8'/%3E%3C/svg%3E";
   };
 
-  title.textContent = link.title || link.url;
-  url.href = link.url;
-  url.textContent = link.url.replace(/^https?:\/\//, "");
+  title.textContent = link.title || link.url || "Untitled note";
+  url.href = hasUrl ? link.url : "#";
+  url.textContent = hasUrl ? link.url.replace(/^https?:\/\//, "") : "";
+  separator.classList.toggle("hidden", !hasUrl);
+  url.classList.toggle("hidden", !hasUrl);
   title.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    if (!hasUrl) {
+      editLinkInComposer(link);
+      return;
+    }
     if (title.__openTimer) {
       window.clearTimeout(title.__openTimer);
     }
@@ -926,6 +946,9 @@ function renderGroups() {
     openBtn.addEventListener("click", async (event) => {
       event.stopPropagation();
       for (const link of visibleLinks) {
+        if (!link.url) {
+          continue;
+        }
         await chrome.tabs.create({ url: link.url, active: false });
       }
     });
@@ -1224,6 +1247,9 @@ async function openVisibleLinks() {
 
   for (const group of getVisibleGroups(activeCollection)) {
     for (const link of filterGroupLinks(group)) {
+      if (!link.url) {
+        continue;
+      }
       await chrome.tabs.create({ url: link.url, active: false });
     }
   }
@@ -1637,38 +1663,68 @@ function attachEvents() {
 
   els.quickAddForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const groupId = await resolveQuickGroupId();
-    await saveLink({
-      id: els.quickAddLinkId.value ? Number(els.quickAddLinkId.value) : undefined,
-      title: els.quickAddTitle.value,
-      url: els.quickAddUrl.value,
-      notes: quickNotesEditor ? quickNotesEditor.value() : els.quickAddNotes.value,
-      tags: quickDraftTags,
-      groupId,
-      pinned: els.quickAddPinned.checked
-    });
-    resetQuickAddForm();
-    await refreshData();
-    await syncIfEnabled("Link saved");
-    els.quickAddTitle.focus();
+    if (
+      !requireVisibleValue(
+        els.quickAddTitle,
+        els.quickAddTitle.value,
+        setQuickAddTab,
+        "Please enter a title."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const groupId = await resolveQuickGroupId();
+      await saveLink({
+        id: els.quickAddLinkId.value ? Number(els.quickAddLinkId.value) : undefined,
+        title: els.quickAddTitle.value,
+        url: els.quickAddUrl.value,
+        notes: quickNotesEditor ? quickNotesEditor.value() : els.quickAddNotes.value,
+        tags: quickDraftTags,
+        groupId,
+        pinned: els.quickAddPinned.checked
+      });
+      resetQuickAddForm();
+      await refreshData();
+      await syncIfEnabled("Link saved");
+      els.quickAddTitle.focus();
+    } catch (error) {
+      window.alert(error.message || "Could not save entry");
+    }
   });
 
   els.linkForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const groupId = await resolveGroupIdFromInput();
-    await saveLink({
-      id: els.linkId.value ? Number(els.linkId.value) : undefined,
-      title: els.linkTitle.value,
-      url: els.linkUrl.value,
-      notes: notesEditor ? notesEditor.value() : els.linkNotes.value,
-      tags: draftTags,
-      groupId,
-      pinned: els.linkPinned.checked
-    });
-    draftTags = [];
-    closeDialog(els.linkDialog);
-    await refreshData();
-    await syncIfEnabled("Link saved");
+    if (
+      !requireVisibleValue(
+        els.linkTitle,
+        els.linkTitle.value,
+        setLinkDialogTab,
+        "Please enter a title."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const groupId = await resolveGroupIdFromInput();
+      await saveLink({
+        id: els.linkId.value ? Number(els.linkId.value) : undefined,
+        title: els.linkTitle.value,
+        url: els.linkUrl.value,
+        notes: notesEditor ? notesEditor.value() : els.linkNotes.value,
+        tags: draftTags,
+        groupId,
+        pinned: els.linkPinned.checked
+      });
+      draftTags = [];
+      closeDialog(els.linkDialog);
+      await refreshData();
+      await syncIfEnabled("Link saved");
+    } catch (error) {
+      window.alert(error.message || "Could not save entry");
+    }
   });
 
   els.collectionForm.addEventListener("submit", async (event) => {

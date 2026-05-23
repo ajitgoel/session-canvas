@@ -35,16 +35,6 @@
       </header>
 
       <div class="workspace">
-        <aside class="sidebar">
-          <section class="sidebar-panel sidebar-collections">
-            <div class="sidebar-heading-row">
-              <p class="sidebar-heading">Collections</p>
-              <button id="newCollectionBtn" class="icon-button" aria-label="Create collection">+</button>
-            </div>
-            <div id="collectionNav" class="group-nav"></div>
-          </section>
-        </aside>
-
         <main class="content">
           <section id="securityGate" class="security-gate hidden">
             <div class="security-panel">
@@ -66,6 +56,17 @@
           </section>
 
           <section id="collectionsView">
+            <section class="collection-toolbar">
+              <div class="collection-toolbar-header">
+                <div>
+                  <p class="eyebrow">Collections</p>
+                  <h2 class="collection-toolbar-title">Switch collections</h2>
+                </div>
+                <button id="newCollectionBtn" class="icon-button" aria-label="Create collection">+</button>
+              </div>
+              <div id="collectionNav" class="collection-pill-bar"></div>
+            </section>
+
             <div class="collections-layout">
               <div class="collections-main">
                 <section class="collection-hero">
@@ -109,7 +110,7 @@
                     <button id="quickAddCancelEditBtn" class="ghost-button compact-button hidden" type="button">Cancel</button>
                   </div>
 
-                  <form id="quickAddForm" class="quick-add-form">
+                  <form id="quickAddForm" class="quick-add-form" novalidate>
                     <input id="quickAddLinkId" type="hidden" />
                     <div class="composer-tabs">
                       <button id="quickAddDetailsTabBtn" class="composer-tab active" type="button">Details</button>
@@ -124,7 +125,7 @@
 
                       <label class="field compact-field">
                         <span>URL</span>
-                        <input id="quickAddUrl" type="text" inputmode="url" placeholder="example.com" required />
+                        <input id="quickAddUrl" type="text" inputmode="url" placeholder="example.com" />
                       </label>
 
                       <label class="field compact-field">
@@ -248,7 +249,7 @@
     </div>
 
     <dialog id="linkDialog" class="modal">
-      <form id="linkForm" class="modal-form" method="dialog">
+      <form id="linkForm" class="modal-form" method="dialog" novalidate>
         <div class="modal-header">
           <div>
             <p class="eyebrow">Entry</p>
@@ -272,7 +273,7 @@
 
           <label class="field">
             <span>URL</span>
-            <input id="linkUrl" name="url" type="text" inputmode="url" placeholder="example.com" required />
+            <input id="linkUrl" name="url" type="text" inputmode="url" placeholder="example.com" />
           </label>
 
           <label class="field">
