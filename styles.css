@@ -283,6 +283,7 @@ button {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
   align-items: start;
+  min-height: calc(100vh - 110px);
 }
 
 .collections-main {
@@ -292,10 +293,15 @@ button {
 .composer-rail {
   position: sticky;
   top: 16px;
+  align-self: stretch;
 }
 
 .composer-card {
-  padding: 14px;
+  height: calc(100vh - 106px);
+  max-height: calc(100vh - 106px);
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(17, 24, 39, 0.08);
@@ -306,28 +312,131 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .composer-header h3 {
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", serif;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
 }
 
 .quick-add-form {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.composer-tabs {
+  display: inline-flex;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.05);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.composer-tab {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+}
+
+.composer-tab.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
+}
+
+.composer-panel {
+  display: none;
+  flex-direction: column;
   gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.composer-panel.active {
+  display: flex;
+}
+
+#quickAddDetailsPanel {
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+#quickAddNotesPanel {
+  flex: 1;
+  min-height: 0;
+}
+
+#quickAddDetailsPanel.active,
+#quickAddNotesPanel.active {
+  overflow: auto;
+  padding-right: 2px;
+}
+
+#quickAddDetailsPanel.active {
+  overflow: visible;
+}
+
+#quickAddNotesPanel .field {
+  flex: 1;
+  min-height: 0;
+}
+
+.composer-panel .EasyMDEContainer .CodeMirror,
+.composer-panel .EasyMDEContainer .CodeMirror-scroll,
+.composer-panel .EasyMDEContainer .editor-preview-side {
+  min-height: calc(100vh - 300px);
+}
+
+.composer-panel .EasyMDEContainer {
+  flex: 1;
+  min-height: 0;
+}
+
+.composer-panel .EasyMDEContainer.sided--no-fullscreen {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.composer-panel .EasyMDEContainer.sided--no-fullscreen .editor-toolbar,
+.composer-panel .EasyMDEContainer.sided--no-fullscreen .editor-statusbar {
+  width: 100%;
+}
+
+.composer-panel .EasyMDEContainer.sided--no-fullscreen .CodeMirror.CodeMirror-sided,
+.composer-panel .EasyMDEContainer.sided--no-fullscreen .editor-preview-active-side {
+  width: 50% !important;
+  flex: 1 1 50%;
 }
 
 .compact-button {
-  padding: 6px 10px;
-  font-size: 0.78rem;
+  padding: 5px 9px;
+  font-size: 0.74rem;
 }
 
 .compact-field {
-  gap: 4px;
+  gap: 3px;
+}
+
+.compact-field input,
+.compact-field textarea,
+.compact-field select {
+  padding: 8px 10px;
+}
+
+.compact-checkbox {
+  margin-top: 2px;
 }
 
 .view-switcher {

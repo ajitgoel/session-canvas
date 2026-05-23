@@ -106,39 +106,52 @@
                       <p class="eyebrow">Quick add</p>
                       <h3>Add link</h3>
                     </div>
-                    <button id="openComposerNotesBtn" class="ghost-button compact-button" type="button">Notes</button>
                   </div>
 
                   <form id="quickAddForm" class="quick-add-form">
-                    <label class="field compact-field">
-                      <span>Title</span>
-                      <input id="quickAddTitle" required />
-                    </label>
-
-                    <label class="field compact-field">
-                      <span>URL</span>
-                      <input id="quickAddUrl" type="text" inputmode="url" placeholder="example.com" required />
-                    </label>
-
-                    <label class="field compact-field">
-                      <span>Tags</span>
-                      <input id="quickAddTagInput" list="tagSuggestions" placeholder="Enter tags and press Enter" />
-                    </label>
-
-                    <div id="quickSelectedTags" class="selected-tags"></div>
-                    <div id="quickExistingTagSuggestions" class="existing-tag-suggestions"></div>
-
-                    <div class="field compact-field">
-                      <span>Group</span>
-                      <input id="quickAddGroupInput" list="groupSuggestions" placeholder="Type or select a group" />
+                    <div class="composer-tabs">
+                      <button id="quickAddDetailsTabBtn" class="composer-tab active" type="button">Details</button>
+                      <button id="quickAddNotesTabBtn" class="composer-tab" type="button">Notes</button>
                     </div>
 
-                    <div id="quickExistingGroupSuggestions" class="existing-tag-suggestions"></div>
+                    <section id="quickAddDetailsPanel" class="composer-panel active">
+                      <label class="field compact-field">
+                        <span>Title</span>
+                        <input id="quickAddTitle" required />
+                      </label>
 
-                    <label class="checkbox-field compact-checkbox">
-                      <input id="quickAddPinned" type="checkbox" />
-                      <span>Pin</span>
-                    </label>
+                      <label class="field compact-field">
+                        <span>URL</span>
+                        <input id="quickAddUrl" type="text" inputmode="url" placeholder="example.com" required />
+                      </label>
+
+                      <label class="field compact-field">
+                        <span>Tags</span>
+                        <input id="quickAddTagInput" list="tagSuggestions" placeholder="Enter tags and press Enter" />
+                      </label>
+
+                      <div id="quickSelectedTags" class="selected-tags"></div>
+                      <div id="quickExistingTagSuggestions" class="existing-tag-suggestions"></div>
+
+                      <div class="field compact-field">
+                        <span>Group</span>
+                        <input id="quickAddGroupInput" list="groupSuggestions" placeholder="Type or select a group" />
+                      </div>
+
+                      <div id="quickExistingGroupSuggestions" class="existing-tag-suggestions"></div>
+
+                      <label class="checkbox-field compact-checkbox">
+                        <input id="quickAddPinned" type="checkbox" />
+                        <span>Pin</span>
+                      </label>
+                    </section>
+
+                    <section id="quickAddNotesPanel" class="composer-panel">
+                      <label class="field compact-field">
+                        <span>Notes</span>
+                        <textarea id="quickAddNotes" rows="12" placeholder="Write notes in Markdown"></textarea>
+                      </label>
+                    </section>
 
                     <button type="submit" class="primary-button">Save link</button>
                   </form>

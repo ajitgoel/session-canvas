@@ -74,6 +74,10 @@ const els = {
   groupsContainer: document.querySelector("#groupsContainer"),
   emptyState: document.querySelector("#emptyState"),
   quickAddForm: document.querySelector("#quickAddForm"),
+  quickAddDetailsTabBtn: document.querySelector("#quickAddDetailsTabBtn"),
+  quickAddNotesTabBtn: document.querySelector("#quickAddNotesTabBtn"),
+  quickAddDetailsPanel: document.querySelector("#quickAddDetailsPanel"),
+  quickAddNotesPanel: document.querySelector("#quickAddNotesPanel"),
   quickAddTitle: document.querySelector("#quickAddTitle"),
   quickAddUrl: document.querySelector("#quickAddUrl"),
   quickAddTagInput: document.querySelector("#quickAddTagInput"),
@@ -82,7 +86,7 @@ const els = {
   quickAddGroupInput: document.querySelector("#quickAddGroupInput"),
   quickExistingGroupSuggestions: document.querySelector("#quickExistingGroupSuggestions"),
   quickAddPinned: document.querySelector("#quickAddPinned"),
-  openComposerNotesBtn: document.querySelector("#openComposerNotesBtn"),
+  quickAddNotes: document.querySelector("#quickAddNotes"),
   linkDialog: document.querySelector("#linkDialog"),
   linkDialogTitle: document.querySelector("#linkDialogTitle"),
   linkForm: document.querySelector("#linkForm"),
@@ -145,6 +149,7 @@ const els = {
 let draftTags = [];
 let quickDraftTags = [];
 let notesEditor = null;
+let quickNotesEditor = null;
 
 function setLinkDialogTab(tab) {
   const showingNotes = tab === "notes";
@@ -155,6 +160,21 @@ function setLinkDialogTab(tab) {
 
   if (showingNotes && notesEditor) {
     setTimeout(() => notesEditor.codemirror.refresh(), 0);
+  }
+}
+
+function setQuickAddTab(tab) {
+  const showingNotes = tab === "notes";
+  els.quickAddDetailsTabBtn.classList.toggle("active", !showingNotes);
+  els.quickAddNotesTabBtn.classList.toggle("active", showingNotes);
+  els.quickAddDetailsPanel.classList.toggle("active", !showingNotes);
+  els.quickAddNotesPanel.classList.toggle("active", showingNotes);
+
+  if (showingNotes) {
+    ensureQuickNotesEditor();
+    if (quickNotesEditor) {
+      setTimeout(() => quickNotesEditor.codemirror.refresh(), 0);
+    }
   }
 }
 
@@ -304,12 +324,14 @@ function setVaultUiState() {
     els.connectDriveBtn,
     els.disconnectDriveBtn,
     els.syncNowBtn,
+    els.quickAddDetailsTabBtn,
+    els.quickAddNotesTabBtn,
     els.quickAddTitle,
     els.quickAddUrl,
     els.quickAddTagInput,
     els.quickAddGroupInput,
     els.quickAddPinned,
-    els.openComposerNotesBtn
+    els.quickAddNotes
   ].filter(Boolean).forEach((element) => {
     element.disabled = locked;
   });
@@ -692,10 +714,16 @@ function resetQuickAddForm(prefill = {}) {
   els.quickAddTitle.value = prefill.title || "";
   els.quickAddUrl.value = prefill.url || "";
   els.quickAddPinned.checked = Boolean(prefill.pinned);
+  if (quickNotesEditor) {
+    quickNotesEditor.value(prefill.notes || "");
+  } else {
+    els.quickAddNotes.value = prefill.notes || "";
+  }
   quickDraftTags = [...(prefill.tags || [])];
   renderQuickSelectedTags();
   els.quickAddGroupInput.value = prefill.groupName || "";
   setQuickAddDefaults();
+  setQuickAddTab("details");
 }
 
 async function renameInline(kind, entity, nextName) {
@@ -1028,6 +1056,40 @@ function ensureNotesEditor() {
   notesEditor.toggleSideBySide();
 }
 
+function ensureQuickNotesEditor() {
+  if (quickNotesEditor || !window.EasyMDE) {
+    return;
+  }
+
+  quickNotesEditor = new window.EasyMDE({
+    element: els.quickAddNotes,
+    autoDownloadFontAwesome: false,
+    spellChecker: false,
+    status: false,
+    minHeight: "220px",
+    sideBySideFullscreen: false,
+    placeholder: "Write notes in Markdown",
+    toolbar: [
+      "bold",
+      "italic",
+      "heading",
+      "|",
+      "quote",
+      "unordered-list",
+      "ordered-list",
+      "|",
+      "link",
+      "code",
+      "table",
+      "|",
+      "preview",
+      "side-by-side"
+    ]
+  });
+
+  quickNotesEditor.toggleSideBySide();
+}
+
 async function resolveGroupIdFromInput() {
   const activeCollection = getActiveCollection();
   const typedName = els.linkGroupInput.value.trim();
@@ -1350,6 +1412,8 @@ async function syncIfEnabled(reason) {
 function attachEvents() {
   els.linkDetailsTabBtn.addEventListener("click", () => setLinkDialogTab("details"));
   els.linkNotesTabBtn.addEventListener("click", () => setLinkDialogTab("notes"));
+  els.quickAddDetailsTabBtn.addEventListener("click", () => setQuickAddTab("details"));
+  els.quickAddNotesTabBtn.addEventListener("click", () => setQuickAddTab("notes"));
 
   els.collectionsTabBtn.addEventListener("click", () => {
     state.activeView = "collections";
@@ -1434,17 +1498,6 @@ function attachEvents() {
   els.saveCurrentTabBtn.addEventListener("click", () => saveCurrentTabToGroup());
   els.importWindowBtn.addEventListener("click", () => importCurrentWindow());
   els.openGroupBtn.addEventListener("click", openVisibleLinks);
-  els.openComposerNotesBtn.addEventListener("click", () => {
-    openLinkDialog({
-      title: els.quickAddTitle.value.trim(),
-      url: els.quickAddUrl.value.trim(),
-      tags: [...quickDraftTags],
-      groupName: els.quickAddGroupInput.value.trim(),
-      pinned: els.quickAddPinned.checked,
-      notes: notesEditor ? notesEditor.value() : ""
-    });
-    setLinkDialogTab("notes");
-  });
   els.googleClientIdInput.addEventListener("change", async (event) => {
     const clientId = event.target.value.trim();
     state.driveSettings = await updateDriveSyncSettings({
@@ -1552,7 +1605,7 @@ function attachEvents() {
     await saveLink({
       title: els.quickAddTitle.value,
       url: els.quickAddUrl.value,
-      notes: "",
+      notes: quickNotesEditor ? quickNotesEditor.value() : els.quickAddNotes.value,
       tags: quickDraftTags,
       groupId,
       pinned: els.quickAddPinned.checked
@@ -1685,6 +1738,7 @@ async function init() {
   }
   attachEvents();
   ensureNotesEditor();
+  ensureQuickNotesEditor();
   resetQuickAddForm();
   await refreshCurrentTabCount();
   await refreshData();
