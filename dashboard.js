@@ -150,6 +150,7 @@ const els = {
   useRemoteConflictBtn: document.querySelector("#useRemoteConflictBtn"),
   keepLocalConflictBtn: document.querySelector("#keepLocalConflictBtn")
 };
+els.saveToast = document.querySelector("#saveToast");
 
 let draftTags = [];
 let quickDraftTags = [];
@@ -159,6 +160,7 @@ let quickComposerAutosaveTimer = null;
 let quickComposerAutosaveInFlight = false;
 let suppressQuickComposerAutosave = false;
 let lastQuickComposerSavedSignature = "";
+let saveToastTimer = null;
 
 function setQuickAddMode(editing = false) {
   els.quickAddEyebrow.textContent = editing ? "Edit link" : "Quick add";
@@ -217,6 +219,53 @@ function getQuickComposerPayload() {
   };
 }
 
+function isLikelyUrl(value) {
+  return (
+    /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value) ||
+    value.startsWith("localhost:") ||
+    value.startsWith("127.0.0.1:") ||
+    value.startsWith("[::1]") ||
+    /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/|$)/.test(value) ||
+    /^[^\s]+\.[^\s]{2,}(\/.*)?$/.test(value)
+  );
+}
+
+function parseQuickComposerEntries(rawValue) {
+  return rawValue
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((line) => {
+      if (line.includes("\t")) {
+        const [title, ...rest] = line.split("\t");
+        return {
+          title: title.trim(),
+          url: rest.join("\t").trim()
+        };
+      }
+
+      const pipeMatch = line.match(/^(.*?)\s+\|\s+(.+)$/);
+      if (pipeMatch) {
+        return {
+          title: pipeMatch[1].trim(),
+          url: pipeMatch[2].trim()
+        };
+      }
+
+      if (isLikelyUrl(line)) {
+        return {
+          title: "",
+          url: line
+        };
+      }
+
+      return {
+        title: line,
+        url: ""
+      };
+    });
+}
+
 function getQuickComposerSignature(payload = getQuickComposerPayload()) {
   return JSON.stringify({
     id: payload.id || 0,
@@ -236,22 +285,69 @@ function clearQuickComposerAutosave() {
   }
 }
 
+function showSaveToast(message) {
+  if (!els.saveToast) {
+    return;
+  }
+
+  els.saveToast.textContent = message;
+  els.saveToast.classList.remove("hidden");
+  if (saveToastTimer) {
+    window.clearTimeout(saveToastTimer);
+  }
+  saveToastTimer = window.setTimeout(() => {
+    els.saveToast.classList.add("hidden");
+    saveToastTimer = null;
+  }, 1800);
+}
+
 async function saveQuickComposerEntry({ resetAfterSave }) {
   const payload = getQuickComposerPayload();
-  if (!requireVisibleValue(els.quickAddTitle, payload.title, setQuickAddTab, "Please enter a title.")) {
+  const entries = parseQuickComposerEntries(payload.url);
+  const hasMultipleEntries = entries.length > 1;
+  const firstEntry = entries[0] || { title: "", url: "" };
+
+  if (payload.id && hasMultipleEntries) {
+    throw new Error("Bulk add is only available when creating new entries.");
+  }
+
+  if (
+    !firstEntry.url &&
+    !payload.title.trim() &&
+    !requireVisibleValue(els.quickAddTitle, payload.title, setQuickAddTab, "Please enter a title.")
+  ) {
     return false;
   }
 
   const groupId = await resolveQuickGroupId();
-  await saveLink({
-    id: payload.id,
-    title: payload.title,
-    url: payload.url,
-    notes: payload.notes,
-    tags: payload.tags,
-    groupId,
-    pinned: payload.pinned
-  });
+
+  if (hasMultipleEntries) {
+    const invalidEntry = entries.find((entry) => !entry.url);
+    if (invalidEntry) {
+      throw new Error("For bulk add, each line must include a URL. Use `Title | URL` or paste one URL per line.");
+    }
+
+    await importLinks(
+      entries.map((entry) => ({
+        title: entry.title || entry.url,
+        url: entry.url,
+        notes: payload.notes,
+        tags: payload.tags,
+        pinned: payload.pinned
+      })),
+      groupId
+    );
+  } else {
+    await saveLink({
+      id: payload.id,
+      title: payload.title.trim() || firstEntry.title || firstEntry.url || "Untitled note",
+      url: firstEntry.url || "",
+      notes: payload.notes,
+      tags: payload.tags,
+      groupId,
+      pinned: payload.pinned
+    });
+  }
 
   lastQuickComposerSavedSignature = getQuickComposerSignature({
     ...payload,
@@ -267,6 +363,7 @@ async function saveQuickComposerEntry({ resetAfterSave }) {
 
   await refreshData();
   await syncIfEnabled("Link saved");
+  showSaveToast(hasMultipleEntries ? `${entries.length} links saved` : "Saved");
   return true;
 }
 
@@ -867,6 +964,7 @@ function resetQuickAddForm(prefill = {}) {
 }
 
 function editLinkInComposer(link) {
+  const isNote = !link.url;
   resetQuickAddForm({
     id: link.id,
     title: link.title || "",
@@ -876,6 +974,18 @@ function editLinkInComposer(link) {
     groupName: link.groupName || "",
     pinned: Boolean(link.pinned)
   });
+  if (isNote) {
+    setQuickAddTab("notes");
+    if (quickNotesEditor) {
+      setTimeout(() => {
+        quickNotesEditor.codemirror.focus();
+      }, 0);
+    } else {
+      els.quickAddNotes.focus();
+    }
+    return;
+  }
+
   els.quickAddTitle.focus();
   els.quickAddTitle.select();
 }
@@ -950,8 +1060,6 @@ function createLinkCard(link) {
   const card = fragment.querySelector(".link-card");
   const favicon = fragment.querySelector(".link-favicon");
   const title = fragment.querySelector(".link-title");
-  const separator = fragment.querySelector(".link-separator");
-  const url = fragment.querySelector(".link-url");
   const tagRow = fragment.querySelector(".tag-row");
   const pinPill = fragment.querySelector(".pin-pill");
   const hasUrl = Boolean(link.url);
@@ -966,10 +1074,7 @@ function createLinkCard(link) {
   };
 
   title.textContent = link.title || link.url || "Untitled note";
-  url.href = hasUrl ? link.url : "#";
-  url.textContent = hasUrl ? link.url.replace(/^https?:\/\//, "") : "";
-  separator.classList.toggle("hidden", !hasUrl);
-  url.classList.toggle("hidden", !hasUrl);
+  title.title = hasUrl ? link.url : "";
   title.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1004,6 +1109,10 @@ function createLinkCard(link) {
     editLinkInComposer(link);
   });
   card.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+    const shouldDelete = window.confirm(`Delete "${link.title || link.url || "this note"}"?`);
+    if (!shouldDelete) {
+      return;
+    }
     await deleteLink(link.id);
     await refreshData();
     await syncIfEnabled("Link deleted");
@@ -1584,6 +1693,13 @@ async function syncIfEnabled(reason) {
 }
 
 function attachEvents() {
+  document.querySelectorAll("form").forEach((form) => {
+    form.noValidate = true;
+  });
+  document.addEventListener("invalid", (event) => {
+    event.preventDefault();
+  }, true);
+
   els.linkDetailsTabBtn.addEventListener("click", () => setLinkDialogTab("details"));
   els.linkNotesTabBtn.addEventListener("click", () => setLinkDialogTab("notes"));
   els.quickAddDetailsTabBtn.addEventListener("click", () => setQuickAddTab("details"));
@@ -1645,6 +1761,12 @@ function attachEvents() {
 
   els.securityForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!els.securityPassphrase.value.trim()) {
+      els.securityPassphrase.focus();
+      window.alert("Please enter your passphrase.");
+      return;
+    }
+
     try {
       if (state.vaultConfigured) {
         await unlockVault(els.securityPassphrase.value);
@@ -1658,10 +1780,12 @@ function attachEvents() {
     }
   });
 
-  els.addLinkBtn.addEventListener("click", () => {
-    resetQuickAddForm();
-    els.quickAddTitle.focus();
-  });
+  if (els.addLinkBtn) {
+    els.addLinkBtn.addEventListener("click", () => {
+      resetQuickAddForm();
+      els.quickAddTitle.focus();
+    });
+  }
   els.quickAddCancelEditBtn.addEventListener("click", () => {
     resetQuickAddForm();
   });
@@ -1688,8 +1812,12 @@ function attachEvents() {
     await refreshData();
     await syncIfEnabled("Collection deleted");
   });
-  els.saveCurrentTabBtn.addEventListener("click", () => saveCurrentTabToGroup());
-  els.importWindowBtn.addEventListener("click", () => importCurrentWindow());
+  if (els.saveCurrentTabBtn) {
+    els.saveCurrentTabBtn.addEventListener("click", () => saveCurrentTabToGroup());
+  }
+  if (els.importWindowBtn) {
+    els.importWindowBtn.addEventListener("click", () => importCurrentWindow());
+  }
   els.openGroupBtn.addEventListener("click", openVisibleLinks);
   els.googleClientIdInput.addEventListener("change", async (event) => {
     const clientId = event.target.value.trim();
@@ -1834,6 +1962,7 @@ function attachEvents() {
       closeDialog(els.linkDialog);
       await refreshData();
       await syncIfEnabled("Link saved");
+      showSaveToast("Saved");
     } catch (error) {
       window.alert(error.message || "Could not save entry");
     }
@@ -1841,6 +1970,12 @@ function attachEvents() {
 
   els.collectionForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!els.collectionName.value.trim()) {
+      els.collectionName.focus();
+      window.alert("Please enter a collection name.");
+      return;
+    }
+
     if (els.collectionId.value) {
       await updateCollection(Number(els.collectionId.value), {
         name: els.collectionName.value,
@@ -1863,10 +1998,17 @@ function attachEvents() {
     closeDialog(els.collectionDialog);
     await refreshData();
     await syncIfEnabled("Collection saved");
+    showSaveToast("Collection saved");
   });
 
   els.groupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!els.groupName.value.trim()) {
+      els.groupName.focus();
+      window.alert("Please enter a group name.");
+      return;
+    }
+
     if (els.groupId.value) {
       await updateGroup(Number(els.groupId.value), {
         name: els.groupName.value,
@@ -1885,6 +2027,7 @@ function attachEvents() {
     closeDialog(els.groupDialog);
     await refreshData();
     await syncIfEnabled("Group saved");
+    showSaveToast("Group saved");
   });
 
   els.deleteCollectionBtn.addEventListener("click", async () => {
