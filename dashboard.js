@@ -75,6 +75,8 @@ const els = {
   emptyState: document.querySelector("#emptyState"),
   quickAddEyebrow: document.querySelector("#quickAddEyebrow"),
   quickAddHeading: document.querySelector("#quickAddHeading"),
+  composerRail: document.querySelector("#composerRail"),
+  quickAddExpandBtn: document.querySelector("#quickAddExpandBtn"),
   quickAddCancelEditBtn: document.querySelector("#quickAddCancelEditBtn"),
   quickAddSubmitBtn: document.querySelector("#quickAddSubmitBtn"),
   quickAddForm: document.querySelector("#quickAddForm"),
@@ -161,12 +163,38 @@ let quickComposerAutosaveInFlight = false;
 let suppressQuickComposerAutosave = false;
 let lastQuickComposerSavedSignature = "";
 let saveToastTimer = null;
+let quickComposerExpanded = false;
+
+function cacheGoogleAuthSettings(settings = state.driveSettings) {
+  if (!settings) {
+    return;
+  }
+
+  chrome.storage.local.set({
+    sessionCanvasGoogleAuth: {
+      clientId: settings.clientId || "",
+      refreshToken: settings.refreshToken || ""
+    }
+  });
+}
 
 function setQuickAddMode(editing = false) {
   els.quickAddEyebrow.textContent = editing ? "Edit link" : "Quick add";
   els.quickAddHeading.textContent = editing ? "Edit link" : "Add link";
   els.quickAddSubmitBtn.textContent = editing ? "Save changes" : "Save link";
   els.quickAddCancelEditBtn.classList.toggle("hidden", !editing);
+}
+
+function setQuickComposerExpanded(expanded) {
+  quickComposerExpanded = Boolean(expanded);
+  els.composerRail?.classList.toggle("expanded", quickComposerExpanded);
+  if (els.quickAddExpandBtn) {
+    els.quickAddExpandBtn.textContent = quickComposerExpanded ? "Collapse" : "Expand";
+  }
+
+  if (quickNotesEditor && els.quickAddNotesPanel.classList.contains("active")) {
+    setTimeout(() => quickNotesEditor.codemirror.refresh(), 0);
+  }
 }
 
 function setLinkDialogTab(tab) {
@@ -669,6 +697,7 @@ async function refreshData() {
   state.collections = collections;
   state.tags = tags;
   state.driveSettings = driveSettings;
+  cacheGoogleAuthSettings(driveSettings);
 
   if (
     !state.activeCollectionId ||
@@ -1269,6 +1298,7 @@ function openLinkDialog(link = null) {
   } else {
     els.linkGroupInput.value = fallbackGroupName;
   }
+  setLinkDialogTab(link?.initialTab === "notes" ? "notes" : "details");
   els.linkDialog.showModal();
 }
 
@@ -1786,6 +1816,11 @@ function attachEvents() {
       els.quickAddTitle.focus();
     });
   }
+  if (els.quickAddExpandBtn) {
+    els.quickAddExpandBtn.addEventListener("click", () => {
+      setQuickComposerExpanded(!quickComposerExpanded);
+    });
+  }
   els.quickAddCancelEditBtn.addEventListener("click", () => {
     resetQuickAddForm();
   });
@@ -1827,6 +1862,7 @@ function attachEvents() {
     }, {
       preserveVaultUpdatedAt: true
     });
+    cacheGoogleAuthSettings(state.driveSettings);
     renderDriveSettings();
   });
   els.googleAutoSyncInput.addEventListener("change", async (event) => {
@@ -1835,6 +1871,7 @@ function attachEvents() {
     }, {
       preserveVaultUpdatedAt: true
     });
+    cacheGoogleAuthSettings(state.driveSettings);
     renderDriveSettings();
   });
   els.connectDriveBtn.addEventListener("click", async () => {
@@ -1851,6 +1888,7 @@ function attachEvents() {
       }, {
         preserveVaultUpdatedAt: true
       });
+      cacheGoogleAuthSettings(state.driveSettings);
       await appendSyncHistory(
         "Connected Google Drive",
         "Authorized Session Canvas to sync encrypted backups with the selected Google account."
@@ -1872,6 +1910,7 @@ function attachEvents() {
     }, {
       preserveVaultUpdatedAt: true
     });
+    cacheGoogleAuthSettings(state.driveSettings);
     await appendSyncHistory(
       "Disconnected Google Drive",
       "Removed the current Google Drive sync connection from this vault."
@@ -2078,9 +2117,10 @@ async function init() {
     state.pendingCompose = {
       title: params.get("title") || "",
       url: params.get("url") || "",
-      notes: "",
+      notes: params.get("notes") || "",
       tags: [],
-      pinned: false
+      pinned: false,
+      initialTab: params.get("tab") === "notes" ? "notes" : "details"
     };
     window.history.replaceState({}, "", window.location.pathname);
   }

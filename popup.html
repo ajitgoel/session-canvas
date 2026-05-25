@@ -29,6 +29,24 @@
           Save this tab using the full manager so the same add-link interface, encryption state, tags, notes, and group creation flow are always used.
         </p>
 
+        <section id="cloudbedsPanel" class="popup-holds hidden">
+          <div class="popup-holds-header">
+            <div>
+              <p class="eyebrow">Cloudbeds</p>
+              <h3>Units on hold</h3>
+            </div>
+            <span id="cloudbedsHoldCount" class="popup-holds-count">0</span>
+          </div>
+          <p id="cloudbedsStatus" class="hero-meta">
+            Open a Cloudbeds calendar tab to capture visible hold units as a note.
+          </p>
+          <ul id="cloudbedsHoldList" class="popup-holds-list"></ul>
+          <div class="popup-footer">
+            <button id="saveCloudbedsSheetBtn" type="button" class="ghost-button">Save to hold sheet</button>
+            <button id="addCloudbedsNoteBtn" type="button" class="primary-button">Add hold note</button>
+          </div>
+        </section>
+
         <div class="popup-footer">
           <button id="saveInManagerBtn" type="button" class="primary-button">Save in manager</button>
         </div>

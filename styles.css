@@ -324,6 +324,15 @@ button {
   position: sticky;
   top: 16px;
   align-self: stretch;
+  z-index: 10;
+}
+
+.composer-rail.expanded {
+  position: fixed;
+  top: 76px;
+  right: 18px;
+  bottom: 18px;
+  width: min(760px, calc(100vw - 36px));
 }
 
 .composer-card {
@@ -335,6 +344,12 @@ button {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.composer-rail.expanded .composer-card {
+  height: 100%;
+  max-height: 100%;
+  box-shadow: 0 28px 80px rgba(17, 24, 39, 0.22);
 }
 
 .composer-header {
@@ -349,6 +364,12 @@ button {
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", serif;
   font-size: 1.15rem;
+}
+
+.composer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .quick-add-form {
@@ -426,6 +447,19 @@ button {
 .composer-panel .EasyMDEContainer .CodeMirror-scroll,
 .composer-panel .EasyMDEContainer .editor-preview-side {
   min-height: calc(100vh - 300px);
+}
+
+.composer-panel .EasyMDEContainer .CodeMirror-scroll,
+.composer-panel .EasyMDEContainer .editor-preview-side {
+  max-height: calc(100vh - 300px);
+  overflow: auto !important;
+}
+
+.composer-rail.expanded .composer-panel .EasyMDEContainer .CodeMirror,
+.composer-rail.expanded .composer-panel .EasyMDEContainer .CodeMirror-scroll,
+.composer-rail.expanded .composer-panel .EasyMDEContainer .editor-preview-side {
+  min-height: calc(100vh - 230px);
+  max-height: calc(100vh - 230px);
 }
 
 .composer-panel .EasyMDEContainer {
@@ -1223,6 +1257,62 @@ button {
   margin-top: 10px;
 }
 
+.popup-holds {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(12, 123, 220, 0.06);
+  border: 1px solid rgba(12, 123, 220, 0.12);
+}
+
+.popup-holds-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.popup-holds-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.popup-holds-count {
+  min-width: 34px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(239, 185, 7, 0.18);
+  color: var(--accent-deep);
+  font-weight: 700;
+  text-align: center;
+}
+
+.popup-holds-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.popup-holds-item {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.06);
+  font-size: 0.9rem;
+}
+
+.popup-holds-item span {
+  color: var(--muted);
+}
+
+.popup-holds-item.muted {
+  color: var(--muted);
+}
+
 @media (max-width: 980px) {
   .topbar {
     grid-template-columns: 1fr;
@@ -1239,6 +1329,13 @@ button {
 
   .collections-layout {
     grid-template-columns: 1fr;
+  }
+
+  .composer-rail.expanded {
+    top: 68px;
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
   }
 
   .collection-hero,

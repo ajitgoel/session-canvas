@@ -1,9 +1,13 @@
 const DRIVE_FILE_NAME = "session-canvas-vault.json";
-const GOOGLE_AUTH_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+const GOOGLE_AUTH_SCOPES = [
+  "https://www.googleapis.com/auth/drive.appdata",
+  "https://www.googleapis.com/auth/spreadsheets"
+];
 const GOOGLE_AUTH_BASE = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const GOOGLE_DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
+const GOOGLE_SHEETS_VALUES_URL = "https://sheets.googleapis.com/v4/spreadsheets";
 
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -41,7 +45,7 @@ function buildAuthUrl(clientId, codeChallenge) {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: GOOGLE_AUTH_SCOPE,
+    scope: GOOGLE_AUTH_SCOPES.join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
@@ -195,6 +199,44 @@ export async function uploadDriveBackup(accessToken, backup, fileId = "") {
     },
     body: form
   });
+
+  return parseJsonResponse(response);
+}
+
+export async function clearGoogleSheetRange(accessToken, spreadsheetId, range) {
+  const encodedRange = encodeURIComponent(range);
+  const response = await fetch(
+    `${GOOGLE_SHEETS_VALUES_URL}/${spreadsheetId}/values/${encodedRange}:clear`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    }
+  );
+
+  return parseJsonResponse(response);
+}
+
+export async function updateGoogleSheetValues(accessToken, spreadsheetId, range, values) {
+  const encodedRange = encodeURIComponent(range);
+  const response = await fetch(
+    `${GOOGLE_SHEETS_VALUES_URL}/${spreadsheetId}/values/${encodedRange}?valueInputOption=RAW`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        range,
+        majorDimension: "ROWS",
+        values
+      })
+    }
+  );
 
   return parseJsonResponse(response);
 }

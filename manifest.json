@@ -8,10 +8,22 @@
     "storage",
     "identity"
   ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://hotels.cloudbeds.com/connect/*"
+      ],
+      "js": [
+        "cloudbeds-calendar.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "host_permissions": [
     "https://www.googleapis.com/*",
     "https://oauth2.googleapis.com/*",
-    "https://accounts.google.com/*"
+    "https://accounts.google.com/*",
+    "https://hotels.cloudbeds.com/*"
   ],
   "action": {
     "default_title": "Session Canvas",

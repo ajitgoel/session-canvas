@@ -7,7 +7,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const url = new URL(chrome.runtime.getURL("dashboard.html"));
     if (message.prefill) {
       Object.entries(message.prefill).forEach(([key, value]) => {
-        if (value) {
+        if (value !== undefined && value !== null && value !== "") {
           url.searchParams.set(key, value);
         }
       });
