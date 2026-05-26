@@ -1,13 +1,5 @@
-import {
-  clearGoogleSheetRange,
-  refreshGoogleAccessToken,
-  updateGoogleSheetValues
-} from "./drive-sync.js";
-
-const HOLD_SHEET_ID = "1shZNltde7hEgBvGgO9Gp7wQex0AQuR2e";
 const HOLD_SHEET_NAME = "units-on-hold-downtown-inn";
-const HOLD_SHEET_CLEAR_RANGE = `${HOLD_SHEET_NAME}!A:Z`;
-const HOLD_SHEET_WRITE_RANGE = `${HOLD_SHEET_NAME}!A1`;
+const APPS_SCRIPT_URL_STORAGE_KEY = "sessionCanvasAppsScriptUrl";
 
 const els = {
   popupFavicon: document.querySelector("#popupFavicon"),
@@ -19,6 +11,8 @@ const els = {
   cloudbedsStatus: document.querySelector("#cloudbedsStatus"),
   cloudbedsHoldCount: document.querySelector("#cloudbedsHoldCount"),
   cloudbedsHoldList: document.querySelector("#cloudbedsHoldList"),
+  appsScriptUrlInput: document.querySelector("#appsScriptUrlInput"),
+  saveAppsScriptUrlBtn: document.querySelector("#saveAppsScriptUrlBtn"),
   addCloudbedsNoteBtn: document.querySelector("#addCloudbedsNoteBtn"),
   saveCloudbedsSheetBtn: document.querySelector("#saveCloudbedsSheetBtn")
 };
@@ -26,6 +20,7 @@ const els = {
 let activeTab;
 let cloudbedsHoldSnapshot = null;
 let cloudbedsActionInFlight = false;
+let appsScriptUrl = "";
 
 function isCloudbedsCalendarTab(tab) {
   return Boolean(tab?.url?.includes("hotels.cloudbeds.com/connect/") && tab.url.includes("#/calendar"));
@@ -34,8 +29,7 @@ function isCloudbedsCalendarTab(tab) {
 function renderCloudbedsState(snapshot) {
   if (!snapshot || !snapshot.ok) {
     els.cloudbedsPanel.classList.add("hidden");
-    els.addCloudbedsNoteBtn.disabled = true;
-    els.saveCloudbedsSheetBtn.disabled = true;
+    setCloudbedsActionsDisabled(true);
     return;
   }
 
@@ -66,7 +60,11 @@ function renderCloudbedsState(snapshot) {
     els.cloudbedsHoldList.append(overflowItem);
   }
 
-  setCloudbedsActionsDisabled(false);
+  setCloudbedsActionsDisabled(!appsScriptUrl);
+  if (!appsScriptUrl) {
+    els.cloudbedsStatus.textContent =
+      "Paste your Apps Script web app URL below, save it, then you can post the hold snapshot.";
+  }
 }
 
 async function loadCloudbedsSnapshot() {
@@ -136,25 +134,47 @@ function addCloudbedsNote() {
 
 function setCloudbedsActionsDisabled(disabled) {
   els.addCloudbedsNoteBtn.disabled = disabled;
-  els.saveCloudbedsSheetBtn.disabled = disabled;
+  els.saveCloudbedsSheetBtn.disabled = disabled || !appsScriptUrl;
 }
 
-function buildHoldSheetRows(snapshot) {
-  return [
-    ["captured_at", "property", "unit", "hold_ranges", "source_url"],
-    ...snapshot.holds.map((hold) => [
-      snapshot.capturedAt,
-      snapshot.propertyName,
-      hold.unit,
-      hold.entries.join("; "),
-      activeTab?.url || snapshot.sourceUrl || ""
-    ])
-  ];
+async function loadAppsScriptSettings() {
+  const data = await chrome.storage.local.get(APPS_SCRIPT_URL_STORAGE_KEY);
+  appsScriptUrl = (data[APPS_SCRIPT_URL_STORAGE_KEY] || "").trim();
+  els.appsScriptUrlInput.value = appsScriptUrl;
 }
 
-async function getCachedGoogleAuthSettings() {
-  const data = await chrome.storage.local.get("sessionCanvasGoogleAuth");
-  return data.sessionCanvasGoogleAuth || { clientId: "", refreshToken: "" };
+async function saveAppsScriptSettings() {
+  appsScriptUrl = els.appsScriptUrlInput.value.trim();
+  await chrome.storage.local.set({
+    [APPS_SCRIPT_URL_STORAGE_KEY]: appsScriptUrl
+  });
+
+  if (cloudbedsHoldSnapshot?.ok) {
+    setCloudbedsActionsDisabled(false);
+    els.cloudbedsStatus.textContent = appsScriptUrl
+      ? "Apps Script URL saved. You can now post the visible hold snapshot."
+      : "Apps Script URL cleared.";
+  }
+}
+
+function buildHoldSheetPayload(snapshot) {
+  return {
+    property: snapshot.propertyName,
+    worksheetName: HOLD_SHEET_NAME,
+    capturedAt: snapshot.capturedAt,
+    sourceUrl: activeTab?.url || snapshot.sourceUrl || "",
+    holds: snapshot.holds,
+    rows: [
+      ["captured_at", "property", "unit", "hold_ranges", "source_url"],
+      ...snapshot.holds.map((hold) => [
+        snapshot.capturedAt,
+        snapshot.propertyName,
+        hold.unit,
+        hold.entries.join("; "),
+        activeTab?.url || snapshot.sourceUrl || ""
+      ])
+    ]
+  };
 }
 
 async function saveCloudbedsSnapshotToSheet() {
@@ -165,33 +185,43 @@ async function saveCloudbedsSnapshotToSheet() {
   cloudbedsActionInFlight = true;
   setCloudbedsActionsDisabled(true);
   const previousStatus = els.cloudbedsStatus.textContent;
-  els.cloudbedsStatus.textContent = "Saving visible hold units to Google Sheets…";
+  els.cloudbedsStatus.textContent = "Posting visible hold units to Apps Script…";
 
   try {
-    const { clientId, refreshToken } = await getCachedGoogleAuthSettings();
-    if (!clientId || !refreshToken) {
-      throw new Error("Connect Google Drive in Session Canvas settings first, then try again.");
+    if (!appsScriptUrl) {
+      throw new Error("Paste and save your Apps Script web app URL first.");
     }
 
-    const accessToken = await refreshGoogleAccessToken({ clientId, refreshToken });
-    const rows = buildHoldSheetRows(cloudbedsHoldSnapshot);
-    await clearGoogleSheetRange(accessToken, HOLD_SHEET_ID, HOLD_SHEET_CLEAR_RANGE);
-    await updateGoogleSheetValues(accessToken, HOLD_SHEET_ID, HOLD_SHEET_WRITE_RANGE, rows);
+    const response = await fetch(appsScriptUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(buildHoldSheetPayload(cloudbedsHoldSnapshot))
+    });
+
+    const text = await response.text();
+    let result = {};
+    try {
+      result = text ? JSON.parse(text) : {};
+    } catch (_error) {
+      result = { raw: text };
+    }
+
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.message || `Apps Script request failed (${response.status})`);
+    }
 
     els.cloudbedsStatus.textContent =
       `Saved ${cloudbedsHoldSnapshot.holdCount} unit${cloudbedsHoldSnapshot.holdCount === 1 ? "" : "s"} to ${HOLD_SHEET_NAME}.`;
   } catch (error) {
-    const message = error?.message || "Could not save to Google Sheets.";
-    if (/insufficient|scope|permission/i.test(message)) {
-      els.cloudbedsStatus.textContent =
-        "Google Sheets access needs a fresh reconnect in Session Canvas settings, then try again.";
-    } else {
-      els.cloudbedsStatus.textContent = message;
-    }
+    const message = error?.message || "Could not save to Apps Script.";
+    console.error("Session Canvas hold sheet webhook failed", error);
+    els.cloudbedsStatus.textContent = message;
   } finally {
     cloudbedsActionInFlight = false;
     if (cloudbedsHoldSnapshot?.ok) {
-      setCloudbedsActionsDisabled(false);
+      setCloudbedsActionsDisabled(!appsScriptUrl);
     } else {
       els.cloudbedsStatus.textContent = previousStatus;
     }
@@ -201,11 +231,13 @@ async function saveCloudbedsSnapshotToSheet() {
 function attachEvents() {
   els.saveInManagerBtn.addEventListener("click", openManagerWithCurrentTab);
   els.openManagerBtn.addEventListener("click", openManagerWithCurrentTab);
+  els.saveAppsScriptUrlBtn.addEventListener("click", saveAppsScriptSettings);
   els.addCloudbedsNoteBtn.addEventListener("click", addCloudbedsNote);
   els.saveCloudbedsSheetBtn.addEventListener("click", saveCloudbedsSnapshotToSheet);
 }
 
 async function init() {
+  await loadAppsScriptSettings();
   attachEvents();
   await loadCurrentTab();
 }

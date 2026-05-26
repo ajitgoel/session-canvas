@@ -21,9 +21,12 @@
   ],
   "host_permissions": [
     "https://www.googleapis.com/*",
+    "https://sheets.googleapis.com/*",
     "https://oauth2.googleapis.com/*",
     "https://accounts.google.com/*",
-    "https://hotels.cloudbeds.com/*"
+    "https://hotels.cloudbeds.com/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
   ],
   "action": {
     "default_title": "Session Canvas",

@@ -40,8 +40,17 @@
           <p id="cloudbedsStatus" class="hero-meta">
             Open a Cloudbeds calendar tab to capture visible hold units as a note.
           </p>
+          <label class="field compact-field popup-config-field">
+            <span>Apps Script URL</span>
+            <input
+              id="appsScriptUrlInput"
+              type="url"
+              placeholder="https://script.google.com/macros/s/.../exec"
+            />
+          </label>
           <ul id="cloudbedsHoldList" class="popup-holds-list"></ul>
           <div class="popup-footer">
+            <button id="saveAppsScriptUrlBtn" type="button" class="ghost-button">Save URL</button>
             <button id="saveCloudbedsSheetBtn" type="button" class="ghost-button">Save to hold sheet</button>
             <button id="addCloudbedsNoteBtn" type="button" class="primary-button">Add hold note</button>
           </div>
